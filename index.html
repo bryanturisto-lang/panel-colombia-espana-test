@@ -1421,9 +1421,54 @@
       '<div class="herramientas"><div class="chips" role="group" aria-label="Filtrar reportes">' +
       [['pendiente', 'Por revisar'], ['en_revision', 'En revisión'], ['aplicado', 'Cupo devuelto'], ['anulado', 'Anulados'], ['todos', 'Todos']].map(x =>
         '<button type="button" class="chip" data-accion="filtro-le" data-valor="' + x[0] + '" aria-pressed="' + (filtrosLE.estado === x[0]) + '">' + x[1] + ' <span class="cuenta num">' + cuenta(x[0]) + '</span></button>').join('') + '</div></div>' +
+      (() => {
+        const sinIA = datos.reportes.filter(r => porRevisar(r) && enRuta(r) && r.evidencia && !r.ia);
+        return revisionMasiva ? '<div class="aviso-ruta" role="status" style="margin-bottom:14px"><span class="punto ok" style="margin-top:7px"></span><div><b>La IA está revisando ' + revisionMasiva.hechos + ' de ' + revisionMasiva.total + '</b><p>Puedes seguir usando el panel; cada tarjeta se actualiza al terminar.</p></div></div>'
+          : sinIA.length ? '<div style="margin-bottom:14px"><button type="button" class="btn btn-lima btn-chico" data-accion="revisar-ia-todos">Revisar con IA los ' + sinIA.length + ' que no tienen revisión</button></div>' : '';
+      })() +
       '<p class="ayuda" style="margin-bottom:14px">Regla actual: ' + esc(textoReglaLE().replace('Puedes', 'cada asesor puede')) + (datos.ajustes.verificacionIA === 'obligatoria' ? ' La IA revisa cada captura antes de enviarla.' : ' La revisión con IA está apagada.') + '</p>' +
       (lista.length ? '<div class="lista-pases">' + lista.map(reporteHtml).join('') + '</div>' : vacioHtml('No hay reportes aquí', 'Los reportes nuevos aparecen en “Por revisar”.'));
   };
+  // La IA revisa la captura de un reporte ya enviado. Solo opina: aprobar o anular lo decide quien revisa, con un clic.
+  const revisandoIA = new Set();
+  let revisionMasiva = null;
+  async function revisarReporteConIA(r, silencioso) {
+    const id = String(r.id);
+    if (revisandoIA.has(id)) return null;
+    revisandoIA.add(id); if (!silencioso) repintar();
+    try {
+      const { data, error } = await sb.functions.invoke(FUNCION_IA_ERRONEOS, { body: { reporte_id: Number(r.id) } });
+      let msg = null;
+      if (error) { msg = error.message; try { const c = await error.context.json(); if (c && c.error) msg = c.error; } catch (e2) {} }
+      else if (!data || !data.ok) msg = (data && data.error) || 'La IA no respondió.';
+      if (msg) { if (!silencioso) avisar('La IA no pudo revisarlo: ' + msg, 'err'); return { error: msg }; }
+      if (data.veredicto !== 'error') r.ia = { veredicto: data.veredicto, explicacion: data.explicacion || '' };
+      if (!silencioso) avisar(data.veredicto === 'confirma' ? 'La IA da el visto bueno a este reporte.' : data.veredicto === 'no_confirma' ? 'La IA no lo confirma: sugiere anularlo.' : data.veredicto === 'dudoso' ? 'La IA tiene dudas: revísalo tú.' : 'La IA no pudo revisar la captura.', data.veredicto === 'error' ? 'err' : undefined);
+      return data;
+    } catch (e) {
+      if (!silencioso) avisar('La IA no pudo revisarlo: ' + mensajeError(e), 'err');
+      return { error: mensajeError(e) };
+    } finally { revisandoIA.delete(id); repintar(); }
+  }
+  async function revisarTodosConIA(lista) {
+    revisionMasiva = { hechos: 0, total: lista.length };
+    const cuenta = { confirma: 0, no_confirma: 0, otros: 0, fallos: 0 };
+    let i = 0;
+    const trabajador = async () => {
+      while (i < lista.length) {
+        const r = lista[i++];
+        const res = await revisarReporteConIA(r, true);
+        if (!res || res.error) cuenta.fallos++; else if (res.veredicto in cuenta) cuenta[res.veredicto]++; else cuenta.otros++;
+        revisionMasiva.hechos++; repintar();
+        if (res && res.error && /m[aá]ximo|sesi[oó]n|solo asignaci/i.test(res.error)) { i = lista.length; avisar(res.error, 'err'); }
+      }
+    };
+    await Promise.all([trabajador(), trabajador()]);   // de dos en dos para no saturar
+    revisionMasiva = null;
+    avisar('Revisión terminada: ' + cuenta.confirma + ' con visto bueno, ' + cuenta.no_confirma + ' para anular, ' + cuenta.otros + ' con dudas' + (cuenta.fallos ? ', ' + cuenta.fallos + ' sin revisar' : '') + '.');
+    recargar(200);
+  }
+
   function reporteHtml(r) {
     // El lead puede no estar cargado (más viejo o de otro asesor): se arma con el texto del reporte.
     const l = leadPorId(r.leadId) || (() => { const p = parsearCliente(r.cliente); return { id: null, cliente: p.nombre, origen: p.origen, destino: p.destino }; })();
@@ -1445,8 +1490,11 @@
       (r.nota ? '<p style="font-size:13.5px;margin-top:6px">Nota de supervisión: ' + esc(r.nota) + '</p>' : '') + lineaIA + avisoRevision + '</div>' +
       '<span class="estado-et" data-e="' + est[1] + '">' + esc(est[0]) + '</span></div>' +
       (veTodo() ? '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">' +
-        (puedeRevisar ? '<button type="button" class="btn btn-chico" data-accion="aprobar-le" data-id="' + r.id + '">' + (r.estado === 'en_revision' ? 'Aprobar y devolver el cupo' : 'Aprobar') + '</button>' +
-          '<button type="button" class="btn btn-peligro btn-chico" data-accion="anular-le" data-id="' + r.id + '">Anular</button>' : '') +
+        (puedeRevisar && r.ia && r.ia.veredicto === 'confirma' ? '<button type="button" class="btn btn-chico" data-accion="aprobar-le" data-id="' + r.id + '">Aprobar: la IA da el visto bueno</button>' : '') +
+        (puedeRevisar && r.ia && r.ia.veredicto === 'no_confirma' ? '<button type="button" class="btn btn-peligro btn-chico" data-accion="anular-ia" data-id="' + r.id + '">Anular con la nota de la IA</button>' : '') +
+        (puedeRevisar && r.evidencia ? '<button type="button" class="btn btn-sec btn-chico" data-accion="revisar-ia" data-id="' + r.id + '"' + (revisandoIA.has(String(r.id)) ? ' disabled' : '') + '>' + (revisandoIA.has(String(r.id)) ? 'La IA está revisando…' : r.ia ? 'Revisar otra vez con IA' : 'Revisar con IA') + '</button>' : '') +
+        (puedeRevisar ? (r.ia && r.ia.veredicto === 'confirma' ? '' : '<button type="button" class="btn btn-chico' + (r.ia && r.ia.veredicto === 'no_confirma' ? ' btn-sec' : '') + '" data-accion="aprobar-le" data-id="' + r.id + '">' + (r.estado === 'en_revision' ? 'Aprobar y devolver el cupo' : 'Aprobar') + '</button>') +
+          (r.ia && r.ia.veredicto === 'no_confirma' ? '' : '<button type="button" class="btn btn-peligro btn-chico" data-accion="anular-le" data-id="' + r.id + '">Anular</button>') : '') +
         (r.evidencia ? '<button type="button" class="btn btn-sec btn-chico" data-accion="ver-captura" data-id="' + r.id + '">Ver captura</button>' : '') +
         (l.id ? '<button type="button" class="btn btn-sec btn-chico" data-accion="abrir-lead" data-id="' + l.id + '">Ver el lead</button>' : '') + '</div>' : '') + '</div>';
   }
@@ -2308,6 +2356,25 @@
         break;
       }
       case 'anular-le': { const r = datos.reportes.find(x => String(x.id) === b.dataset.id); if (r) modalAnularLE(r); break; }
+      case 'revisar-ia': { const r = datos.reportes.find(x => String(x.id) === b.dataset.id); if (r) revisarReporteConIA(r); break; }
+      case 'revisar-ia-todos': {
+        if (revisionMasiva) break;
+        const lista = datos.reportes.filter(r => porRevisar(r) && (rutaFiltro === 'TODAS' || r.ruta === rutaFiltro) && r.evidencia && !r.ia);
+        if (!lista.length) break;
+        abrirModal('<form class="formulario"><h2 id="modalTitulo">Revisar ' + lista.length + ' reportes con IA</h2><p>La IA mira la captura de cada uno y deja su opinión en la tarjeta: visto bueno o anular. No aprueba ni anula nada sola: eso lo haces tú con un clic.</p>' +
+          '<p class="ayuda">Cuesta unos 1 a 2 centavos de dólar por captura (unos ' + Math.max(1, Math.round(lista.length * 0.015 * 100) / 100) + ' dólares en total). Tarda unos segundos por reporte.</p>' + botonesModal('Revisar con IA') + '</form>',
+          () => { revisarTodosConIA(lista); return true; });
+        break;
+      }
+      case 'anular-ia': {
+        const r = datos.reportes.find(x => String(x.id) === b.dataset.id); if (!r || !r.ia) break;
+        b.disabled = true;
+        sb.rpc('anular_reporte_erroneo', { p_reporte_id: Number(r.id), p_nota: ('Revisado con IA: ' + r.ia.explicacion).slice(0, 300) }).then(({ error }) => {
+          if (error) throw error;
+          avisar('Reporte anulado con la nota de la IA.'); recargar(100);
+        }).catch(er => { avisar('No se pudo anular: ' + mensajeError(er), 'err'); b.disabled = false; });
+        break;
+      }
       case 'ver-captura': verImagen('reportes_erroneos', 'evidencia_url', b.dataset.id, 'Captura del reporte'); break;
       case 'ver-comprobante': if (l) verImagen('leads', 'foto_contacto_url', l.id, 'Comprobante de contacto'); break;
       case 'sacar-turno': {
