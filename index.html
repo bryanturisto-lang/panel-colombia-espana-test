@@ -351,6 +351,8 @@
     border: 1.5px dashed var(--linea); border-radius: var(--r-m); padding: 18px; text-align: center; color: var(--niebla-2);
     transition: border-color var(--t), background var(--t);
   }
+  .zona-archivos.pide { animation: pide 1.2s ease 2; border-color: var(--coral); }
+  @keyframes pide { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--coral) 25%, transparent); } }
   .zona-archivos.encima { border-color: var(--violeta-claro); background: color-mix(in srgb, var(--violeta) 10%, transparent); }
   .doc { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--linea-suave); }
   .doc:last-child { border-bottom: 0; }
@@ -2005,8 +2007,11 @@
       ? '<p style="margin-top:12px"><span class="estado-et" data-e="' + l.estado + '">' + NOMBRE_ESTADO[l.estado] + '</span></p>'
       : '<div class="pasos" role="group" aria-label="Estado del lead">' + ESTADOS.map(e => {
         const actual = e.id === l.estado, hecho = ORDEN[e.id] < ORDEN[l.estado];
-        return '<button type="button" data-accion="estado" data-valor="' + e.id + '" aria-pressed="' + actual + '"' + (hecho ? ' class="hecho"' : '') + (editable ? '' : ' disabled') + '>' + e.nombre + '</button>';
-      }).join('') + '</div>';
+        const bloqueado = (e.id === 'contactado' || e.id === 'cerrado') && faltaComprobante(l);
+        return '<button type="button" data-accion="estado" data-valor="' + e.id + '" aria-pressed="' + actual + '"' + (hecho ? ' class="hecho"' : '') + (editable ? '' : ' disabled') +
+          (bloqueado ? ' title="Primero sube la captura del primer contacto" aria-describedby="avisoCaptura"' : '') + '>' + (bloqueado ? '<span aria-hidden="true">🔒 </span>' : '') + e.nombre + '</button>';
+      }).join('') + '</div>' +
+      (editable && faltaComprobante(l) && l.estado === 'nuevo' ? '<p class="ayuda" id="avisoCaptura" style="margin-top:8px">Para marcarlo como Contactado sube la captura del primer contacto (más abajo): se pone en Contactado solo.</p>' : '');
 
     const fila = (k, v) => '<div class="linea-dato"><span class="tenue">' + k + '</span><span style="text-align:right">' + v + '</span></div>';
     const esMio = rol === 'asesor' && l.asesorId === yo().id;
@@ -2101,7 +2106,16 @@
   }
 
   // ---- Cambiar el estado de un lead (update con .select: 0 filas = Supabase no lo dejó) ----
+  // El contacto se prueba con la captura: sin ella el lead no pasa a Contactado ni a Venta cerrada.
+  const faltaComprobante = (l) => !l.comprobante && !l.contactadoEn;
+  function pedirComprobante() {
+    avisar('Primero sube la captura del primer contacto: es la prueba de que de verdad lo contactaste.', 'err');
+    const zona = $('#zonaArchivos');
+    if (zona) { zona.scrollIntoView({ block: 'center', behavior: 'smooth' }); zona.classList.remove('pide'); void zona.offsetWidth; zona.classList.add('pide'); }
+    $('#selectorArchivos').value = ''; $('#selectorArchivos').click();
+  }
   async function cambiarEstado(l, nuevo) {
+    if ((nuevo === 'contactado' || nuevo === 'cerrado') && faltaComprobante(l)) throw new Error('primero sube la captura del primer contacto.');
     const { data, error } = await sb.from('leads').update({ estado: aEstadoBD(nuevo) }).eq('id', l.id).select('id');
     if (error) throw error;
     if (!data || !data.length) throw new Error('Supabase no dejó cambiarlo: el lead no es tuyo.');
@@ -2778,6 +2792,7 @@
       // ---- dentro del panel del lead ----
       case 'estado': {
         if (!l || val === l.estado) break;
+        if ((val === 'contactado' || val === 'cerrado') && faltaComprobante(l)) { pedirComprobante(); break; }
         if (val === 'cerrado') { modalVenta(l); break; }
         b.disabled = true;
         cambiarEstado(l, val).then(() => { repintar(); avisar('Lead en “' + NOMBRE_ESTADO[val] + '”.'); },
