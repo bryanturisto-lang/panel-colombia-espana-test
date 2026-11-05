@@ -864,6 +864,19 @@
     };
   }
 
+  // Los Apps Script guardan el teléfono sin "+" ("573001234567") para que Sheets no lo rompa.
+  // Para leerlo se le pone el prefijo y espacios; para WhatsApp se usan solo los dígitos.
+  function telVisible(t) {
+    const s = String(t || '').trim(); const d = s.replace(/\D/g, '');
+    if (!d || !/^[+\d\s().-]+$/.test(s)) return s;
+    let m;
+    if ((m = d.match(/^57(3\d{2}|60\d)(\d{3})(\d{4})$/))) return '+57 ' + m[1] + ' ' + m[2] + ' ' + m[3];
+    if ((m = d.match(/^58([24]\d{2})(\d{3})(\d{4})$/))) return '+58 ' + m[1] + ' ' + m[2] + ' ' + m[3];
+    if ((m = d.match(/^34([6-9]\d{2})(\d{3})(\d{3})$/))) return '+34 ' + m[1] + ' ' + m[2] + ' ' + m[3];
+    if ((m = d.match(/^54(9?)(\d{2})(\d{4})(\d{4})$/))) return '+54 ' + (m[1] ? '9 ' : '') + m[2] + ' ' + m[3] + ' ' + m[4];
+    if (/^1\d{10}$/.test(d)) return '+1 ' + d.slice(1, 4) + ' ' + d.slice(4, 7) + ' ' + d.slice(7);
+    return s;
+  }
   function leadDesdeFila(f) {
     const p = parsearCliente(f.cliente);
     return {
@@ -1453,7 +1466,8 @@
     }).join('');
     const cupos = u.rutas.filter(r => miCupo[r]).map(r => {
       const c = miCupo[r];
-      return '<div class="linea-dato"><span class="tenue">' + esc(RUTAS[r]) + '</span><span class="num">' + (c.inhabilitado ? 'Cupo completo' : c.leads + (c.cupo ? ' de ' + c.cupo : '') + ' leads hoy') + '</span></div>';
+      return '<div class="linea-dato"><span class="tenue">' + esc(RUTAS[r]) + '</span><span class="num">' + (c.inhabilitado ? 'Cupo completo' : c.leads + (c.cupo ? ' de ' + c.cupo : '') + ' leads hoy') + '</span></div>' +
+        (c.detalle ? '<p class="ayuda" style="margin-top:-4px">' + esc(c.detalle) + '</p>' : '');
     }).join('');
     const boton = !t ? '<button type="button" class="btn btn-sec" disabled>Registro cerrado ahora</button>'
       : registrandoTurno ? '<button type="button" class="btn btn-lima registrando" disabled>Registrando en la hoja…</button>'
@@ -1490,10 +1504,10 @@
     return '<section class="bloque" aria-labelledby="tPausa"><header><h2 id="tPausa">Reparto automático</h2></header>' +
       Object.keys(RUTAS).map(r => {
         const p = pausa[r] || {};
-        const estado = p.cargando ? 'Consultando…' : p.error ? 'No se pudo leer' : p.pausado ? 'En pausa' : p.pausado === false ? 'Repartiendo' : '—';
+        const estado = p.cargando ? 'Consultando…' : p.error ? 'No se pudo leer' : p.pausado ? (p.automatica ? 'Pausa automática' + (p.hasta ? ' hasta las ' + p.hasta : '') : 'En pausa') : p.pausado === false ? 'Repartiendo' : '—';
         return '<div class="linea-dato" style="align-items:center"><span><span class="punto ' + (p.pausado === false ? 'ok' : p.pausado ? 'alerta' : '') + '"></span> ' + esc(RUTAS[r]) + ' · <span class="tenue">' + estado + '</span></span>' +
           '<button type="button" class="btn btn-sec btn-chico" data-accion="pausa" data-valor="' + r + '"' + (p.cargando || p.pausado == null ? ' disabled' : '') + '>' + (p.pausado ? 'Reanudar' : 'Pausar') + '</button></div>';
-      }).join('') + '<p class="ayuda">La pausa dura hasta que alguien la reanude.</p></section>';
+      }).join('') + '<p class="ayuda">' + (Object.values(pausa).some(p => p && p.automatica) ? 'La pausa automática termina sola; “Reanudar” la salta solo por hoy. ' : '') + 'La pausa manual dura hasta que alguien la reanude.</p></section>';
   }
   function leHtmlCorto() {
     if (veTodo()) {
@@ -2009,7 +2023,7 @@
         '<div class="muy-tenue" style="font-size:13px;margin-top:4px">Lead ' + l.id + ' · ' + esc(RUTAS[l.ruta] || l.ruta) + '</div></div>' +
         '<button type="button" class="btn-icono cerrar" data-accion="cerrar-cajon" aria-label="Cerrar el lead"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>' +
         '<div class="cliente">' + esc(l.cliente) + '</div>' +
-        '<div class="contacto"><span class="num">' + esc(l.tel || 'Sin teléfono') + '</span>' +
+        '<div class="contacto"><span class="num">' + esc(telVisible(l.tel) || 'Sin teléfono') + '</span>' +
         (tel ? '<a class="btn btn-sec btn-chico" href="https://wa.me/' + esc(tel) + '" target="_blank" rel="noopener noreferrer">Abrir WhatsApp</a>' +
           '<button type="button" class="btn btn-sec btn-chico" data-accion="copiar-tel">Copiar número</button>' : '') + '</div>' + pasos + '</div>' +
       '<div class="cajon-cuerpo" id="cajonCuerpo">' + cuerpo + '</div>' +
@@ -2110,7 +2124,7 @@
     const conIA = iaObligatoria();
     const exige = datos.ajustes.exigirCaptura || conIA;
     let revision = null;      // { clave, ia } de la última captura revisada
-    abrirModal('<form class="formulario" novalidate><h2 id="modalTitulo">Reportar como erróneo</h2><p>' + esc(l.cliente) + ' · ' + esc(l.tel) + '</p>' +
+    abrirModal('<form class="formulario" novalidate><h2 id="modalTitulo">Reportar como erróneo</h2><p>' + esc(l.cliente) + ' · ' + esc(telVisible(l.tel)) + '</p>' +
       '<div class="cupo-le" style="margin:0"><span class="num">' + c.quedan + '</span><span>reportes disponibles hoy de ' + c.limite + '. ' + esc(textoReglaLE()) + '</span></div>' +
       '<fieldset><legend class="sr">Motivo</legend><div class="opciones">' + Object.keys(MOTIVOS_LE).map((k, i) =>
         '<label class="opcion"><input type="radio" name="motivo" value="' + k + '"' + (i === 0 ? ' required' : '') + '><span>' + esc(MOTIVOS_LE[k]) + '</span></label>').join('') + '</div></fieldset>' +
@@ -2293,7 +2307,7 @@
     });
     return candidatos.length === 1 ? candidatos[0] : null;
   }
-  const fichaLead = (l) => '<span class="ficha">' + rutaHtml(l) + '<br>' + esc(l.cliente) + ' · ' + esc(l.tel) + ' · ' + esc(NOMBRE_ESTADO[l.estado]) + '</span>';
+  const fichaLead = (l) => '<span class="ficha">' + rutaHtml(l) + '<br>' + esc(l.cliente) + ' · ' + esc(telVisible(l.tel)) + ' · ' + esc(NOMBRE_ESTADO[l.estado]) + '</span>';
 
   function decir(texto, extra) { asis.mensajes.push(Object.assign({ quien: 'bot', texto }, extra || {})); pintarChat(); }
   function pintarChat() {
@@ -2760,7 +2774,7 @@
       case 'copiar-tel': {
         if (!l) break;
         const hecho = () => avisar('Número copiado.');
-        if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(l.tel).then(hecho, () => avisar('No se pudo copiar. Selecciona el número a mano.', 'err'));
+        if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(telVisible(l.tel)).then(hecho, () => avisar('No se pudo copiar. Selecciona el número a mano.', 'err'));
         else avisar('Tu navegador no deja copiar aquí. Selecciona el número a mano.', 'err');
         break;
       }
@@ -2857,7 +2871,7 @@
       try {
         const resp = await llamarAppsScript({ action: 'micupo', nombre: u.nombre }, r);
         const c = resp && resp.porRuta ? (resp.porRuta[r] || Object.values(resp.porRuta)[0]) : null;
-        if (c && typeof c.leads === 'number') miCupo[r] = c; else delete miCupo[r];
+        if (c && typeof c.leads === 'number') miCupo[r] = Object.assign({}, c, { detalle: resp.detalleCupo || '' }); else delete miCupo[r];
       } catch (e) { delete miCupo[r]; }
     }));
     if (seccionActual() === 'inicio' && !$('#modal').classList.contains('abierto')) repintar();
@@ -2866,22 +2880,23 @@
   async function consultarPausa() {
     if (rol !== 'asignador') return;
     await Promise.all(Object.keys(RUTAS).map(async (r) => {
-      try { const resp = await llamarAppsScript({ action: 'estadoPausa', grupo: 'TODOS' }, r); pausa[r] = { pausado: !!(resp && resp.pausado) }; }
+      try { const resp = await llamarAppsScript({ action: 'estadoPausa', grupo: 'TODOS' }, r); pausa[r] = estadoDePausa(resp); }
       catch (e) { pausa[r] = { error: true }; }
     }));
     if (seccionActual() === 'inicio' && !$('#modal').classList.contains('abierto')) repintar();
   }
+  const estadoDePausa = (resp) => ({ pausado: !!(resp && resp.pausado), automatica: !!(resp && resp.automatica), hasta: (resp && resp.hasta) || '' });
   async function cambiarPausa(ruta) {
     const p = pausa[ruta]; if (!p || p.cargando || p.pausado == null) return;
     const accion = p.pausado ? 'reanudar' : 'pausar';
     pausa[ruta] = { pausado: p.pausado, cargando: true }; repintar();
     try {
       const resp = await llamarAppsScript({ action: accion, grupo: 'TODOS', por: yo().nombre }, ruta);
-      pausa[ruta] = { pausado: !!(resp && resp.pausado) };
-      avisar(RUTAS[ruta] + (pausa[ruta].pausado ? ': reparto en pausa.' : ': reparto reanudado.'));
+      pausa[ruta] = estadoDePausa(resp);
+      avisar(RUTAS[ruta] + ': ' + ((resp && resp.message) || (pausa[ruta].pausado ? 'reparto en pausa.' : 'reparto reanudado.')));
     } catch (e) {
       // La escritura en la hoja a veces se completa aunque la respuesta no llegue: se vuelve a leer.
-      try { const resp = await llamarAppsScript({ action: 'estadoPausa', grupo: 'TODOS' }, ruta); pausa[ruta] = { pausado: !!(resp && resp.pausado) }; }
+      try { const resp = await llamarAppsScript({ action: 'estadoPausa', grupo: 'TODOS' }, ruta); pausa[ruta] = estadoDePausa(resp); }
       catch (e2) { pausa[ruta] = { error: true }; }
       avisar('No se pudo confirmar el cambio en la hoja de ' + RUTAS[ruta] + '. Revisa el estado.', 'err');
     }
