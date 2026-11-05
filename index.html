@@ -551,6 +551,14 @@
     .banda .btn-banda { font-size: 12px; padding: 3px 8px; white-space: nowrap; flex: none; }
     .banda .btn-banda .larga { display: none; }
   }
+  /* ===================== ORDEN DEL REPARTO ===================== */
+  .orden-ruta + .orden-ruta { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--linea-suave); }
+  .orden-ruta h3 { font: 600 13px Inter, sans-serif; color: var(--niebla-2); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; display: flex; gap: 8px; }
+  .orden-lista { list-style: none; margin: 0; padding: 0; }
+  .orden-lista li { display: flex; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--linea-suave); min-width: 0; }
+  .orden-lista li:last-child { border-bottom: 0; }
+  .orden-lista li span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .puesto { flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--tinta-2); border: 1px solid var(--linea); font: 700 13px 'Space Grotesk', sans-serif; color: var(--niebla); }
   /* ===================== ACCESO ===================== */
   .acceso { display: none; }
   body.sin-sesion .acceso { display: grid; place-items: center; position: fixed; inset: 0; z-index: 60; background: var(--noche); padding: 16px; overflow-y: auto; }
@@ -901,7 +909,7 @@
     const rutasConsulta = veTodoAhora ? Object.keys(RUTAS) : (rutasMias.length ? rutasMias : ['__ninguna__']);
 
     // Registros de turno de hoy
-    let cons = sb.from('registros_turno').select('asesor_id, turno, ruta').eq('fecha', hoy);
+    let cons = sb.from('registros_turno').select('asesor_id, turno, ruta, creado_en').eq('fecha', hoy);
     if (!veTodoAhora) cons = cons.eq('asesor_id', miId);
     const reg = await cons;
     const registros = reg.error ? [] : (reg.data || []);
@@ -978,6 +986,41 @@
     }
     idsConocidos = new Set(mios.map(l => l.id));
   }
+
+  // ---- Orden del reparto: la lista del turno tal como está en la hoja de cada ruta ----
+  // El reparto es equitativo y va en ese orden, así que el puesto es lo que importa (no cuántos lleva).
+  const ordenHoja = {};             // ruta -> { nombres: [...], turno } | { error: true }
+  const normNombre = (t) => quitarAcentos(String(t || '').replace(/[\u00A0\u200B-\u200D\uFEFF]/g, ' ')).replace(/\s+/g, ' ').trim();
+  let consultandoOrden = false;
+  async function consultarOrdenHoja() {
+    if (!miId || consultandoOrden) return;
+    consultandoOrden = true;
+    const rutas = rol === 'asesor' ? yo().rutas : Object.keys(RUTAS);
+    try {
+      await Promise.all(rutas.map(async (r) => {
+        try {
+          const resp = await llamarAppsScript({ action: 'estado' }, r);
+          if (!resp || !Array.isArray(resp.asesoresAM) || !Array.isArray(resp.asesoresPM)) throw new Error('respuesta sin listas');
+          const t = turnoActual() || (resp.turno === 'PM' ? 'PM' : 'AM');
+          const lista = (t === 'PM' ? resp.asesoresPM : resp.asesoresAM).map(x => typeof x === 'string' ? x : (x && x.nombre)).filter(Boolean).map(x => String(x).trim());
+          ordenHoja[r] = { nombres: lista, turno: t };
+        } catch (e) { ordenHoja[r] = { error: true }; }
+      }));
+    } finally { consultandoOrden = false; }
+    if (seccionActual() === 'inicio' && !$('#modal').classList.contains('abierto')) repintar();
+  }
+  let ordenPendiente = null;
+  const consultarOrdenLuego = (ms = 1500) => { clearTimeout(ordenPendiente); ordenPendiente = setTimeout(consultarOrdenHoja, ms); };
+  // Lista de una ruta: la de la hoja; si la hoja no respondió, la del panel por hora de registro.
+  function listaDelTurno(ruta) {
+    const o = ordenHoja[ruta];
+    if (o && o.nombres) return { nombres: o.nombres, deHoja: true };
+    const t = turnoActual();
+    const regs = [];
+    datos.usuarios.forEach(u => u.registros.forEach(r => { if (r.ruta === ruta && r.turno === t) regs.push({ nombre: u.nombre, ts: r.creado_en ? Date.parse(r.creado_en) : 0 }); }));
+    return { nombres: regs.sort((a, b) => a.ts - b.ts).map(x => x.nombre), deHoja: false };
+  }
+  const puestoEn = (ruta, nombre) => { const n = normNombre(nombre); const i = listaDelTurno(ruta).nombres.findIndex(x => normNombre(x) === n); return i < 0 ? null : i + 1; };
 
   // ---- Recarga con espera (para no recargar 10 veces seguidas con el tiempo real) ----
   let recargaPendiente = null, cargando = false;
@@ -1193,7 +1236,7 @@
       '<div class="acciones"><a class="btn btn-sec btn-chico" href="#/leads">Ver todos</a></div></header>' +
       (ahoraLista.length ? '<div class="lista-pases">' + ahoraLista.slice(0, 8).map(l => paseHtml(l, { conAsesor: veTodo() })).join('') + '</div>'
         : vacioHtml('Todo al día', 'Cuando entre un lead nuevo aparecerá aquí primero.')) +
-      '</section><div class="columna">' + (rol === 'asesor' ? turnoHtml() : resumenEquipoHtml() + (rol === 'asignador' ? pausaHtml() : '')) + leHtmlCorto() + '</div></div>';
+      '</section><div class="columna">' + (rol === 'asesor' ? turnoHtml() + leHtmlCorto() : (rol === 'asignador' ? pausaHtml() : '') + leHtmlCorto() + resumenEquipoHtml()) + '</div></div>';
   };
 
   let registrandoTurno = false;
@@ -1207,6 +1250,7 @@
         '<p class="tenue" style="font-size:14px">Para registrarte en el turno, la asignadora tiene que decidir si vas para Colombia, para España o para las dos.</p></section>';
     }
     const registradas = t ? u.registros.filter(r => r.turno === t).map(r => r.ruta) : [];
+    const puestos = registradas.map(r => { const p = puestoEn(r, u.nombre); return p ? '<div class="linea-dato"><span class="tenue">Tu puesto en ' + esc(RUTAS[r]) + '</span><span class="num"><b>' + p + '</b> de ' + listaDelTurno(r).nombres.length + '</span></div>' : ''; }).join('');
     const cupos = u.rutas.filter(r => miCupo[r]).map(r => {
       const c = miCupo[r];
       return '<div class="linea-dato"><span class="tenue">' + esc(RUTAS[r]) + '</span><span class="num">' + (c.inhabilitado ? 'Cupo completo' : c.leads + (c.cupo ? ' de ' + c.cupo : '') + ' leads hoy') + '</span></div>';
@@ -1218,17 +1262,21 @@
       '<div class="reloj num" id="reloj">' + fmtHora(Date.now()) + '</div>' +
       '<div class="estado-turno"><span class="punto ' + (dentro ? 'ok' : '') + '"></span>' + (dentro ? 'Estás en la lista de reparto' : 'No estás recibiendo leads') + '</div>' +
       '<div class="rutas-turno">' + u.rutas.map(r => '<span class="ruta-chip">' + RUTAS[r] + (registradas.includes(r) ? ' ✓' : '') + '</span>').join('') + '</div>' +
-      cupos + boton +
+      puestos + cupos + boton +
       '<p class="ayuda">' + (t ? 'Primero te anota la hoja de reparto de cada ruta; solo entonces te pones en verde aquí.' : 'Turno AM de 9:00 a 17:00 y PM de 18:00 a 23:00, hora de Caracas.') + '</p></section>';
   }
   function resumenEquipoHtml() {
     const t = turnoActual();
-    const asesores = asesoresActivos(rutaFiltro).filter(a => a.enTurno);
-    return '<section class="bloque" aria-labelledby="tEq"><header><h2 id="tEq">' + (t ? 'Turno ' + t : 'Sin turno abierto') + '</h2><div class="acciones"><a class="btn btn-sec btn-chico" href="#/equipo">Ver turnos</a></div></header>' +
-      (asesores.length ? asesores.map(a => {
-        const n = datos.leads.filter(l => l.asesorId === a.id && esHoy(l.asignado) && (rutaFiltro === 'TODAS' || l.ruta === rutaFiltro)).length;
-        return '<div class="linea-dato"><span>' + esc(a.nombre) + '</span><span class="num tenue">' + n + (n === 1 ? ' lead hoy' : ' leads hoy') + '</span></div>';
-      }).join('') : '<p class="tenue">Nadie registrado en este turno todavía.</p>') + '</section>';
+    const rutas = rutaFiltro === 'TODAS' ? Object.keys(RUTAS) : [rutaFiltro];
+    const bloques = rutas.map(r => {
+      const l = listaDelTurno(r);
+      return '<div class="orden-ruta"><h3>' + esc(RUTAS[r]) + ' <span class="muy-tenue num">' + l.nombres.length + '</span></h3>' +
+        (l.nombres.length ? '<ol class="orden-lista">' + l.nombres.map((n, i) => '<li><span class="puesto num">' + (i + 1) + '</span><span>' + esc(n) + '</span></li>').join('') + '</ol>'
+          : '<p class="tenue" style="font-size:14px">Nadie registrado todavía.</p>') +
+        (l.nombres.length && !l.deHoja ? '<p class="ayuda">La hoja no respondió: orden por hora de registro en el panel.</p>' : '') + '</div>';
+    }).join('');
+    return '<section class="bloque" aria-labelledby="tEq"><header><h2 id="tEq">' + (t ? 'Orden del reparto · turno ' + t : 'Sin turno abierto') + '</h2><div class="acciones"><a class="btn btn-sec btn-chico" href="#/equipo">Ver turnos</a></div></header>' +
+      (t ? bloques : '<p class="tenue">Turno AM de 9:00 a 17:00 y PM de 18:00 a 23:00.</p>') + '</section>';
   }
   // Pausa del reparto automático: la guarda cada Apps Script (grupo TODOS de cada ruta).
   function pausaHtml() {
@@ -2351,7 +2399,7 @@
     if (bien.length) avisar('Quedaste en la lista de reparto de ' + nombreRutas(bien.map(x => x.r)) + '.');
     mal.forEach(x => avisar(x.error, 'err'));
     await recargarYa();
-    consultarMiCupo();
+    consultarMiCupo(); consultarOrdenHoja();
   }
   async function salirDelTurno() {
     const u = yo(), t = turnoActual();
@@ -2594,10 +2642,11 @@
         document.body.classList.remove('sin-sesion');
         repintar();
         conectarTiempoReal();
-        consultarMiCupo(); consultarPausa();
+        consultarMiCupo(); consultarPausa(); consultarOrdenHoja();
         temporizadores.push(setInterval(() => recargar(0), 60000));
         temporizadores.push(setInterval(consultarMiCupo, 120000));
         temporizadores.push(setInterval(consultarPausa, 120000));
+        temporizadores.push(setInterval(consultarOrdenHoja, 120000));
         try { if (window.Notification && Notification.permission === 'default') Notification.requestPermission(); } catch (e) {}
       } catch (e) {
         console.error(e);
@@ -2612,7 +2661,7 @@
     // Dos canales, igual que el panel actual: si el de reportes falla, el de leads sigue.
     canales.push(sb.channel('turisto-v2-en-vivo')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => recargar(500))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'registros_turno' }, () => recargar(800))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'registros_turno' }, () => { recargar(800); consultarOrdenLuego(); })
       .subscribe());
     canales.push(sb.channel('turisto-v2-erroneos')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reportes_erroneos' }, () => recargar(500))
@@ -2623,7 +2672,7 @@
     temporizadores.forEach(clearInterval); temporizadores = [];
     clearTimeout(recargaPendiente);
     miId = null; rol = 'asesor'; datos = datosVacios(); idsConocidos = null;
-    Object.keys(miCupo).forEach(k => delete miCupo[k]); Object.keys(pausa).forEach(k => delete pausa[k]);
+    Object.keys(miCupo).forEach(k => delete miCupo[k]); Object.keys(ordenHoja).forEach(k => delete ordenHoja[k]); Object.keys(pausa).forEach(k => delete pausa[k]);
     cerrarModal(); cerrarCajon(); cerrarAsistente(); reiniciarAsistente();
     document.body.classList.add('sin-sesion');
     modoAcceso = 'entrar'; pintarAcceso(mensaje);
