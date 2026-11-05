@@ -277,6 +277,15 @@
   .ruta-chip { font-size: 12.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--violeta) 22%, transparent); color: var(--niebla); }
   .aviso-ruta { display: flex; gap: 14px; align-items: flex-start; border: 1px solid color-mix(in srgb, var(--ambar) 45%, var(--linea-suave)); background: color-mix(in srgb, var(--ambar) 7%, var(--tinta)); border-radius: var(--r-l); padding: 18px 20px; margin-bottom: 22px; }
   .aviso-ruta b { display: block; font-size: 15px; margin-bottom: 4px; }
+  .turno-cta { display: flex; align-items: center; gap: 14px 16px; flex-wrap: wrap; margin-bottom: 22px; padding: 16px 18px; border-radius: var(--r-l);
+    background: linear-gradient(105deg, color-mix(in srgb, var(--lima) 30%, #fff), #fff 70%); border: 1px solid color-mix(in srgb, var(--lima) 70%, var(--linea)); box-shadow: var(--sombra-suave); }
+  .turno-cta .texto { flex: 1 1 260px; min-width: 0; }
+  .turno-cta b { display: block; font-size: 16px; margin-bottom: 2px; }
+  .turno-cta p { color: var(--niebla-2); font-size: 14px; }
+  .turno-cta .punto { width: 12px; height: 12px; align-self: flex-start; margin-top: 6px; }
+  .turno-cta .btn { flex: none; }
+  @media (max-width: 1080px) { .rejilla-inicio.es-asesor > .columna { order: -1; } }
+  @media (max-width: 560px) { .turno-cta .btn { width: 100%; } }
   .aviso-hoja { border: 1px solid color-mix(in srgb, var(--ambar) 45%, var(--linea-suave)); background: color-mix(in srgb, var(--ambar) 8%, transparent); border-radius: var(--r-m); padding: 12px 14px; margin: 12px 0; font-size: 14px; }
   .aviso-hoja.rojo { border-color: color-mix(in srgb, var(--coral) 55%, var(--linea-suave)); background: color-mix(in srgb, var(--coral) 8%, transparent); }
   .aviso-hoja b { display: block; margin-bottom: 4px; }
@@ -965,7 +974,9 @@
   }
   // La captura de un lead erróneo va más grande: la lee la IA.
   async function comprimirEvidencia(archivo) {
-    let d = await comprimirImagen(archivo, 1400, 0.8);
+    // 1568 px es lo más grande que la IA mira sin reducir: así lee mejor los textos chicos del chat.
+    let d = await comprimirImagen(archivo, 1568, 0.85);
+    if (d.length > 1400000) d = await comprimirImagen(archivo, 1400, 0.78);
     if (d.length > 1400000) d = await comprimirImagen(archivo, 1100, 0.7);
     return d;
   }
@@ -1336,7 +1347,8 @@
     }
     const dentro = miTurno(), t = turnoActual();
     el.innerHTML = '<div class="estado"><span class="punto ' + (dentro ? 'ok' : '') + '"></span>' + (dentro ? 'Recibiendo leads' : 'Fuera del turno') + '</div>' +
-      '<p class="muy-tenue" style="margin-top:4px">' + (dentro ? 'Turno ' + t + ' hasta las ' + (t === 'AM' ? '17:00' : '23:00') : t ? 'Regístrate desde Inicio' : 'Ahora no hay turno abierto') + '</p>';
+      '<p class="muy-tenue" style="margin-top:4px">' + (dentro ? 'Turno ' + t + ' hasta las ' + (t === 'AM' ? '17:00' : '23:00') : t ? 'Turno ' + t + ' abierto hasta las ' + (t === 'AM' ? '17:00' : '23:00') : 'Ahora no hay turno abierto. AM de 9:00 a 17:00 y PM de 18:00 a 23:00.') + '</p>' +
+      (!dentro && t ? '<button type="button" class="btn btn-lima btn-chico" style="margin-top:10px;width:100%" data-accion="turno-registrar"' + (registrandoTurno ? ' disabled' : '') + '>' + (registrandoTurno ? 'Registrando…' : 'Registrarme en el turno') + '</button>' : '');
   }
 
   // ======================================================
@@ -1398,8 +1410,9 @@
         (sinRuta().length === 1 ? '1 asesor espera ruta' : sinRuta().length + ' asesores esperan ruta') + '</b>' +
         '<p>' + esc(sinRuta().map(x => x.nombre).join(', ')) + ' ya crearon su cuenta. Sin ruta no pueden trabajar.</p>' +
         '<a class="btn btn-chico" style="margin-top:10px" href="#/asesores">Asignar rutas</a></div></div>' : '') +
+      (rol === 'asesor' ? avisoTurnoHtml() : '') +
       '<div class="cifras">' + cifras.map(c => '<div class="cifra"><span class="num">' + esc(c[0]) + '</span><span>' + esc(c[1]) + '</span></div>').join('') + '</div>' +
-      '<div class="rejilla-inicio"><section class="bloque" aria-labelledby="tAhora"><header><h2 id="tAhora">Atiende ahora</h2>' +
+      '<div class="rejilla-inicio' + (rol === 'asesor' ? ' es-asesor' : '') + '"><section class="bloque" aria-labelledby="tAhora"><header><h2 id="tAhora">Atiende ahora</h2>' +
       '<div class="acciones"><a class="btn btn-sec btn-chico" href="#/leads">Ver todos</a></div></header>' +
       (ahoraLista.length ? '<div class="lista-pases">' + ahoraLista.slice(0, 8).map(l => paseHtml(l, { conAsesor: veTodo() })).join('') + '</div>'
         : vacioHtml('Todo al día', 'Cuando entre un lead nuevo aparecerá aquí primero.')) +
@@ -1407,6 +1420,19 @@
   };
 
   let registrandoTurno = false;
+  // Llamada a la acción arriba de todo: sin esto, en el celular el botón quedaba debajo de la lista de leads.
+  function avisoTurnoHtml() {
+    const u = yo(), t = turnoActual();
+    if (!u.rutas.length || !t) return '';
+    const faltan = u.rutas.filter(r => !u.registros.some(x => x.ruta === r && x.turno === t));
+    if (!faltan.length) return '';
+    const parcial = faltan.length < u.rutas.length;
+    return '<section class="turno-cta" aria-labelledby="tCta"><span class="punto ' + (parcial ? 'ok' : 'alerta') + '"></span><div class="texto"><b id="tCta">' +
+      (parcial ? 'Te falta registrarte en ' + esc(nombreRutas(faltan)) : 'No estás recibiendo leads') + '</b>' +
+      '<p>El turno ' + t + ' está abierto hasta las ' + (t === 'AM' ? '17:00' : '23:00') + ' (hora de Caracas). Regístrate para entrar en la lista de reparto' + (u.rutas.length > 1 ? ' de ' + esc(nombreRutas(faltan)) : '') + '.</p></div>' +
+      (registrandoTurno ? '<button type="button" class="btn btn-lima registrando" disabled>Registrando en la hoja…</button>'
+        : '<button type="button" class="btn btn-lima" data-accion="turno-registrar">' + (faltan.length > 1 ? 'Registrarme en mis ' + faltan.length + ' rutas' : 'Registrarme en el turno') + '</button>') + '</section>';
+  }
   function turnoHtml() {
     const u = yo();
     const dentro = miTurno() && u.rutas.length > 0;
@@ -2512,6 +2538,9 @@
         registrarseEnTurno();
         break;
       }
+      case 'turno-registrar':
+        if ($('#lateral').classList.contains('abierto')) { $('#lateral').classList.remove('abierto'); $('#veloLateral').classList.remove('abierto'); }
+        registrarseEnTurno(); break;
       case 'pausa': cambiarPausa(val); break;
       case 'reanotar': if (RUTAS[val]) reanotarEnHoja(val, [yo().nombre]); break;
       case 'reanotar-todos': if (RUTAS[val] && rol === 'asignador') reanotarEnHoja(val, registradosEn(val).filter(u => faltaEnHoja(val, u.id)).map(u => u.nombre)); break;
