@@ -432,6 +432,7 @@
   .etiqueta-estado { font-size: 11.5px; font-weight: 600; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; }
   .etiqueta-estado.bloq { color: var(--coral); }
   .etiqueta-estado.ret { color: var(--niebla-3); }
+  .etiqueta-estado.rol { color: var(--violeta); background: var(--lavanda); border-color: transparent; }
   .acciones-asesor { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-left: auto; }
   select.entrada.mini { width: auto; padding: 6px 28px 6px 10px; font-size: 13px; }
   .etq-m { display: none; }
@@ -1248,9 +1249,10 @@
 
   // ---- Asesores y rutas ----
   // Un asesor solo recibe leads, ve el turno y se registra en las rutas que tenga.
-  const todosLosAsesores = () => datos.usuarios.filter(u => u.rol === 'asesor');
+  // El equipo que atiende leads: asesores y asignadores (líderes que también trabajan leads).
+  const todosLosAsesores = () => datos.usuarios.filter(u => u.rol === 'asesor' || u.rol === 'asignador');
   const asesoresActivos = (ruta) => todosLosAsesores().filter(u => u.estado === 'activo' && u.rutas.length && (!ruta || ruta === 'TODAS' || u.rutas.includes(ruta)));
-  const sinRuta = () => todosLosAsesores().filter(u => u.estado === 'activo' && !u.rutas.length);
+  const sinRuta = () => todosLosAsesores().filter(u => u.rol === 'asesor' && u.estado === 'activo' && !u.rutas.length);
   const nombreRutas = (rutas) => rutas.length ? rutas.map(r => RUTAS[r]).join(' y ') : 'sin ruta';
 
   // ---- Límite de leads erróneos (el mismo cálculo que el panel actual) ----
@@ -1346,7 +1348,7 @@
 
   function pintarTurnoLateral() {
     const el = $('#turnoLateral');
-    if (rol !== 'asesor') {
+    if (rol !== 'asesor' && !(rol === 'asignador' && yo().rutas.length)) {
       const cuantos = asesoresActivos(rutaFiltro).filter(x => x.enTurno).length;
       const t = turnoActual();
       suave(el).innerHTML = '<div class="estado"><span class="punto ' + (cuantos ? 'ok' : '') + '"></span>' + cuantos + ' asesores en turno</div><p class="muy-tenue" style="margin-top:4px">' + (t === 'AM' ? 'Turno AM, de 9:00 a 17:00' : t === 'PM' ? 'Turno PM, de 18:00 a 23:00' : 'Ahora no hay turno abierto') + '</p>';
@@ -1421,13 +1423,13 @@
         (sinRuta().length === 1 ? '1 asesor espera ruta' : sinRuta().length + ' asesores esperan ruta') + '</b>' +
         '<p>' + esc(sinRuta().map(x => x.nombre).join(', ')) + ' ya crearon su cuenta. Sin ruta no pueden trabajar.</p>' +
         '<a class="btn btn-chico" style="margin-top:10px" href="#/asesores">Asignar rutas</a></div></div>' : '') +
-      (rol === 'asesor' ? avisoTurnoHtml() : '') +
+      ((rol === 'asesor' || (rol === 'asignador' && yo().rutas.length)) ? avisoTurnoHtml() : '') +
       '<div class="cifras">' + cifras.map(c => '<div class="cifra"><span class="num">' + esc(c[0]) + '</span><span>' + esc(c[1]) + '</span></div>').join('') + '</div>' +
       '<div class="rejilla-inicio' + (rol === 'asesor' ? ' es-asesor' : '') + '"><section class="bloque" aria-labelledby="tAhora"><header><h2 id="tAhora">Atiende ahora</h2>' +
       '<div class="acciones"><a class="btn btn-sec btn-chico" href="#/leads">Ver todos</a></div></header>' +
       (ahoraLista.length ? '<div class="lista-pases">' + ahoraLista.slice(0, 8).map(l => paseHtml(l, { conAsesor: veTodo() })).join('') + '</div>'
         : vacioHtml('Todo al día', 'Cuando entre un lead nuevo aparecerá aquí primero.')) +
-      '</section><div class="columna">' + (rol === 'asesor' ? turnoHtml() + leHtmlCorto() : (rol === 'asignador' ? pausaHtml() : '') + leHtmlCorto() + resumenEquipoHtml()) + '</div></div>';
+      '</section><div class="columna">' + (rol === 'asesor' ? turnoHtml() + leHtmlCorto() : (rol === 'asignador' ? pausaHtml() + turnoHtml() : '') + leHtmlCorto() + resumenEquipoHtml()) + '</div></div>';
   };
 
   let registrandoTurno = false;
@@ -1449,6 +1451,12 @@
     const dentro = miTurno() && u.rutas.length > 0;
     const t = turnoActual();
     if (!u.rutas.length) {
+      if (rol === 'asignador') {
+        return '<section class="bloque turno" aria-labelledby="tTurno"><h2 id="tTurno">Tu turno</h2>' +
+          '<div class="estado-turno"><span class="punto"></span>No atiendes leads</div>' +
+          '<p class="tenue" style="font-size:14px">Si también vas a atender leads, márcate una ruta en Asesores y rutas: después te registras aquí como cualquier asesor.</p>' +
+          '<a class="btn btn-sec btn-chico" href="#/asesores" style="align-self:flex-start">Marcarme una ruta</a></section>';
+      }
       return '<section class="bloque turno" aria-labelledby="tTurno"><h2 id="tTurno">Tu turno</h2>' +
         '<div class="estado-turno"><span class="punto"></span>Sin ruta asignada</div>' +
         '<p class="tenue" style="font-size:14px">Para registrarte en el turno, la asignadora tiene que decidir si vas para Colombia, para España o para las dos.</p></section>';
@@ -1812,10 +1820,11 @@
       todos: u => u.estado !== 'retirado',
       COLOMBIA: u => u.estado !== 'retirado' && u.rutas.includes('COLOMBIA'),
       ESPANA: u => u.estado !== 'retirado' && u.rutas.includes('ESPANA'),
+      asignador: u => u.estado !== 'retirado' && u.rol === 'asignador',
       bloqueado: u => u.estado === 'bloqueado',
       retirado: u => u.estado === 'retirado'
     };
-    const etiquetas = { todos: 'Todos', COLOMBIA: 'Colombia', ESPANA: 'España', bloqueado: 'Bloqueados', retirado: 'Retirados' };
+    const etiquetas = { todos: 'Todos', COLOMBIA: 'Colombia', ESPANA: 'España', asignador: 'Asignadores', bloqueado: 'Bloqueados', retirado: 'Retirados' };
 
     const bloquePendientes = pendientes.length
       ? '<section class="bloque pendientes" aria-labelledby="tPend" style="margin-bottom:22px"><header><h2 id="tPend">Esperan ruta</h2><span class="contador-et num">' + pendientes.length + '</span></header>' +
@@ -1829,7 +1838,7 @@
         '</section>'
       : '';
 
-    return '<div class="cabeza"><div><h1>Asesores y rutas</h1><p class="sub">Elige a qué ruta va cada persona. Solo recibe leads, ve el turno y se registra en las rutas que tenga marcadas.</p></div></div>' +
+    return '<div class="cabeza"><div><h1>Asesores y rutas</h1><p class="sub">Elige a qué ruta va cada persona. Solo recibe leads, ve el turno y se registra en las rutas que tenga marcadas. Los asignadores también salen aquí: si atienden leads, márcales su ruta.</p></div></div>' +
       bloquePendientes +
       '<div class="herramientas"><div class="chips" role="group" aria-label="Filtrar asesores">' +
       Object.keys(etiquetas).map(k => '<button type="button" class="chip" data-accion="filtro-asesores" data-valor="' + k + '" aria-pressed="' + (filtrosAsesores.grupo === k) + '">' + etiquetas[k] +
@@ -1841,7 +1850,7 @@
   };
 
   function listaAsesoresHtml(grupos) {
-    grupos = grupos || { todos: u => u.estado !== 'retirado', COLOMBIA: u => u.estado !== 'retirado' && u.rutas.includes('COLOMBIA'), ESPANA: u => u.estado !== 'retirado' && u.rutas.includes('ESPANA'), bloqueado: u => u.estado === 'bloqueado', retirado: u => u.estado === 'retirado' };
+    grupos = grupos || { todos: u => u.estado !== 'retirado', COLOMBIA: u => u.estado !== 'retirado' && u.rutas.includes('COLOMBIA'), ESPANA: u => u.estado !== 'retirado' && u.rutas.includes('ESPANA'), asignador: u => u.estado !== 'retirado' && u.rol === 'asignador', bloqueado: u => u.estado === 'bloqueado', retirado: u => u.estado === 'retirado' };
     const t = sinAcentos(filtrosAsesores.texto.trim());
     const lista = todosLosAsesores().filter(grupos[filtrosAsesores.grupo]).filter(u => !t || sinAcentos(u.nombre).includes(t))
       .sort((a, b) => (a.estado === 'activo' ? 0 : 1) - (b.estado === 'activo' ? 0 : 1) || a.nombre.localeCompare(b.nombre));
@@ -1849,7 +1858,8 @@
     return lista.map(u => {
       const hoy = datos.leads.filter(l => l.asesorId === u.id && esHoy(l.asignado)).length;
       const activo = u.estado === 'activo';
-      const estadoEt = u.estado === 'bloqueado' ? '<span class="etiqueta-estado bloq">Bloqueado</span>' : u.estado === 'retirado' ? '<span class="etiqueta-estado ret">Retirado</span>' : '';
+      const estadoEt = (u.rol === 'asignador' ? '<span class="etiqueta-estado rol">Asignador' + (u.id === miId ? ' · tú' : '') + '</span>' : '') +
+        (u.estado === 'bloqueado' ? '<span class="etiqueta-estado bloq">Bloqueado</span>' : u.estado === 'retirado' ? '<span class="etiqueta-estado ret">Retirado</span>' : '');
       const sub = !activo ? (u.estado === 'bloqueado' ? 'No puede entrar al panel' : 'Ya no trabaja en el equipo')
         : !u.rutas.length ? 'Sin ruta asignada' : enTurno(u.id) ? 'En turno ' + u.turno + ' ahora' : 'Fuera del turno';
       return '<div class="fila-asesor' + (activo ? '' : ' inactivo') + '">' +
@@ -1862,7 +1872,8 @@
         '<span class="celda celda-hoy num"><span class="etq-m">Leads hoy</span>' + hoy + '</span>' +
         '<span class="acciones-asesor">' + (u.id === miId ? '' : u.estado === 'retirado'
           ? '<button type="button" class="btn btn-sec btn-chico" data-accion="reincorporar" data-id="' + u.id + '">Reincorporar</button>'
-          : '<button type="button" class="btn btn-sec btn-chico" data-accion="bloquear" data-id="' + u.id + '">' + (u.estado === 'bloqueado' ? 'Desbloquear' : 'Bloquear') + '</button>' +
+          : '<button type="button" class="btn btn-sec btn-chico" data-accion="rol-asignador" data-id="' + u.id + '">' + (u.rol === 'asignador' ? 'Quitar asignador' : 'Hacer asignador') + '</button>' +
+            '<button type="button" class="btn btn-sec btn-chico" data-accion="bloquear" data-id="' + u.id + '">' + (u.estado === 'bloqueado' ? 'Desbloquear' : 'Bloquear') + '</button>' +
             '<button type="button" class="btn btn-peligro btn-chico" data-accion="retirar" data-id="' + u.id + '">Retirar</button>') + '</span></div>';
     }).join('');
   }
@@ -1873,7 +1884,7 @@
     // Quién se registró hoy en ese turno (sale de registros_turno, el espejo de la hoja).
     const asesores = todosLosAsesores().filter(u => u.registros.some(r => r.turno === filtrosEquipo.turno && (rutaFiltro === 'TODAS' || r.ruta === rutaFiltro)));
     return '<div class="cabeza"><div><h1>Turnos y cupos</h1><p class="sub">Quién se registró hoy en cada turno, cuántos leads lleva y quién tiene leads sin contactar.</p></div>' +
-      (rol === 'asignador' ? '<div class="acciones"><a class="btn btn-sec" href="#/asesores">Cambiar rutas</a></div>' : '') + '</div>' +
+      (rol === 'asignador' ? '<div class="acciones"><button type="button" class="btn" data-accion="anotar-turno"' + (turnoActual() ? '' : ' disabled title="Ahora no hay turno abierto"') + '>Anotar en el turno</button><a class="btn btn-sec" href="#/asesores">Cambiar rutas</a></div>' : '') + '</div>' +
       '<div class="herramientas"><div class="segmentado" role="group" aria-label="Turno">' +
       ['AM', 'PM'].map(t => '<button type="button" data-accion="turno-equipo" data-valor="' + t + '" aria-pressed="' + (filtrosEquipo.turno === t) + '">Turno ' + t + (t === 'AM' ? ' · 9 a 17' : ' · 18 a 23') + '</button>').join('') + '</div></div>' +
       (asesores.length ? '<div class="tabla-marco"><table><caption class="sr">Asesores del turno ' + filtrosEquipo.turno + '</caption><thead><tr><th>Asesor</th><th>Ruta</th><th>Estado</th><th>Leads hoy</th><th class="num">Sin contactar</th><th class="num">Erróneos</th>' + (rol === 'asignador' ? '<th><span class="sr">Acciones</span></th>' : '') + '</tr></thead><tbody>' +
@@ -2642,6 +2653,20 @@
         if ($('#lateral').classList.contains('abierto')) { $('#lateral').classList.remove('abierto'); $('#veloLateral').classList.remove('abierto'); }
         registrarseEnTurno(); break;
       case 'pausa': cambiarPausa(val); break;
+      case 'anotar-turno': if (rol === 'asignador') modalAnotarTurno(); break;
+      case 'rol-asignador': {
+        const u = datos.usuarios.find(x => x.id === b.dataset.id); if (!u || u.id === miId || rol !== 'asignador') break;
+        const hacer = u.rol !== 'asignador';
+        abrirModal('<form class="formulario"><h2 id="modalTitulo">' + (hacer ? 'Hacer asignador a ' : 'Quitar el rol de asignador a ') + esc(u.nombre) + '</h2><p>' +
+          (hacer ? 'Podrá anotar y sacar asesores del turno, asignar rutas, bloquear, retirar, pausar el reparto y revisar los leads erróneos. Si tiene ruta, sigue atendiendo leads como siempre.'
+                 : 'Vuelve a ser asesor: solo ve sus propios leads. Sus rutas y su turno no cambian.') + '</p><p class="error-campo oculto" role="alert"></p>' + botonesModal(hacer ? 'Hacer asignador' : 'Quitar el rol') + '</form>', async () => {
+          const { data, error } = await sb.from('asesores').update({ es_asignador: hacer }).eq('id', u.id).select('id');
+          if (error) throw error;
+          if (!data || !data.length) throw new Error('Supabase no dejó cambiar el rol: falta correr el SQL 05.');
+          avisar(u.nombre + (hacer ? ' ahora es asignador. Que cierre sesión y vuelva a entrar para ver las herramientas.' : ' vuelve a ser asesor.')); recargar(100);
+        });
+        break;
+      }
       case 'reanotar': if (RUTAS[val]) reanotarEnHoja(val, [yo().nombre]); break;
       case 'reanotar-todos': if (RUTAS[val] && rol === 'asignador') reanotarEnHoja(val, registradosEn(val).filter(u => faltaEnHoja(val, u.id)).map(u => u.nombre)); break;
       case 'filtro-estado': filtrosLeads.estado = val; repintar(); break;
@@ -2847,11 +2872,58 @@
     recargar(50);
   }
   // Igual que el "Sacar" del panel actual: primero Supabase, después la hoja (avisa si la hoja falla).
+  // La asignadora anota a alguien en el turno: primero la hoja de reparto de cada ruta, después Supabase.
+  function modalAnotarTurno() {
+    const t = turnoActual();
+    if (!t) { avisar('Ahora no hay turno abierto. Turno AM de 9:00 a 17:00 y PM de 18:00 a 23:00 (hora de Caracas).', 'err'); return; }
+    const faltaEn = (u) => u.rutas.filter(r => !u.registros.some(x => x.ruta === r && x.turno === t));
+    const candidatos = todosLosAsesores().filter(u => u.estado === 'activo' && u.rutas.length && faltaEn(u).length).sort((a, b) => a.nombre.localeCompare(b.nombre));
+    if (!candidatos.length) { avisar('Todos los asesores activos con ruta ya están en el turno ' + t + '.'); return; }
+    const casillas = (u) => faltaEn(u).map(r => '<label class="opcion"><input type="checkbox" name="ruta" value="' + r + '" checked><span>' + esc(RUTAS[r]) + '</span></label>').join('');
+    abrirModal('<form class="formulario" novalidate><h2 id="modalTitulo">Anotar en el turno ' + t + '</h2>' +
+      '<p>Se anota primero en la hoja de reparto de cada ruta (con eso ya recibe leads) y después en el panel.</p>' +
+      '<label class="campo"><span>Asesor</span><select class="entrada" name="asesor" required>' +
+      candidatos.map(u => '<option value="' + u.id + '">' + esc(u.nombre) + (u.rol === 'asignador' ? ' (asignador)' : '') + '</option>').join('') + '</select></label>' +
+      '<fieldset><legend class="campo"><span>Rutas</span></legend><div class="opciones" id="rutasAnotar">' + casillas(candidatos[0]) + '</div></fieldset>' +
+      '<p class="error-campo oculto" role="alert"></p>' + botonesModal('Anotar en el turno') + '</form>', async (form) => {
+      const u = candidatos.find(x => x.id === form.asesor.value); if (!u) return false;
+      const rutas = Array.from(form.querySelectorAll('input[name="ruta"]:checked')).map(x => x.value);
+      if (!rutas.length) return marcarError(form, 'asesor', 'Marca al menos una ruta.');
+      const res = [];
+      for (const r of rutas) {                     // de una en una: cada hoja usa un candado
+        try {
+          const resp = await llamarAppsScript({ action: 'registrar', nombre: u.nombre }, r);
+          const msg = (resp && resp.message) || '';
+          if (resp && resp.success === false && !/ya est[aá]s? registrad/i.test(msg)) {
+            const porCupo = resp.bloqueadoPorTope === true || /l[ií]mite de leads|cupo|tope de \d+ leads|complet/i.test(msg);
+            res.push({ r, error: porCupo ? u.nombre + ' ya completó su cupo de hoy en ' + RUTAS[r] + '.' : 'La hoja de ' + RUTAS[r] + ' no lo aceptó: ' + (msg || 'sin motivo') });
+            continue;
+          }
+          const { error } = await sb.from('registros_turno').insert({ asesor_id: u.id, fecha: hoyClave(), turno: t, ruta: r }).select();
+          if (error && error.code !== '23505') {
+            res.push({ r, error: /row-level security|permission|42501/i.test((error.message || '') + error.code)
+              ? 'Quedó en la hoja de ' + RUTAS[r] + ' (ya recibe leads), pero el panel no tiene permiso para anotarlo: falta correr el SQL 05.'
+              : 'Quedó en la hoja de ' + RUTAS[r] + ', pero el panel no lo guardó: ' + mensajeError(error) });
+            continue;
+          }
+          res.push({ r });
+        } catch (e) { res.push({ r, error: 'No se pudo contactar la hoja de ' + RUTAS[r] + ': ' + mensajeError(e) }); }
+      }
+      const bien = res.filter(x => !x.error);
+      if (bien.length) avisar(u.nombre + ' quedó en el turno ' + t + ' de ' + nombreRutas(bien.map(x => x.r)) + '.');
+      res.filter(x => x.error).forEach(x => avisar(x.error, 'err'));
+      recargar(100); consultarOrdenLuego(800);
+    });
+    const form = $('#modalCaja form');
+    form.asesor.addEventListener('change', () => { const u = candidatos.find(x => x.id === form.asesor.value); if (u) $('#rutasAnotar').innerHTML = casillas(u); });
+  }
+
   async function sacarDelTurno(a) {
     const t = turnoActual();
     const regs = a.registros.filter(r => !t || r.turno === t);
-    const { error } = await sb.from('registros_turno').delete().eq('asesor_id', a.id).eq('fecha', hoyClave()).eq('turno', t || filtrosEquipo.turno);
+    const { data: borrados, error } = await sb.from('registros_turno').delete().eq('asesor_id', a.id).eq('fecha', hoyClave()).eq('turno', t || filtrosEquipo.turno).select('asesor_id');
     if (error) throw error;
+    const sinPermiso = a.id !== miId && regs.length && !(borrados && borrados.length);
     const fallos = [];
     for (const reg of regs) {
       try {
@@ -2860,12 +2932,13 @@
       } catch (e) { fallos.push(RUTAS[reg.ruta]); }
     }
     if (fallos.length) avisar(a.nombre + ' salió del panel, pero la hoja de ' + fallos.join(' y ') + ' no respondió: sácalo a mano en la hoja.', 'err');
+    else if (sinPermiso) avisar(a.nombre + ' ya no está en la hoja de reparto, pero Supabase no dejó quitar su registro del panel: falta correr el SQL 05 (permiso de la asignadora).', 'err');
     else avisar(a.nombre + ' salió del turno.');
     recargar(50);
   }
   // Cupo de leads del día que lleva el asesor en cada hoja.
   async function consultarMiCupo() {
-    if (rol !== 'asesor') return;
+    if (!(rol === 'asesor' || (rol === 'asignador' && yo().rutas.length))) return;
     const u = yo();
     await Promise.all(u.rutas.map(async (r) => {
       try {
