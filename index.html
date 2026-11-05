@@ -1695,20 +1695,21 @@
     const lista = datos.reportes.filter(r => coincide(r, filtrosLE.estado) && enRuta(r))
       .sort((a, b) => (b.estado === 'en_revision') - (a.estado === 'en_revision') || b.ts - a.ts).slice(0, 60);
     const cuenta = (e) => datos.reportes.filter(r => coincide(r, e) && enRuta(r)).length;
-    return '<div class="cabeza"><div><h1>Leads erróneos</h1><p class="sub">Reportes de los últimos ' + DIAS_CARGADOS + ' días. Revisa cada uno con su captura: si lo apruebas queda revisado; si lo anulas, el lead vuelve a contar en el cupo del asesor.</p></div>' +
+    return '<div class="cabeza"><div><h1>Leads erróneos</h1><p class="sub">Reportes de los últimos ' + DIAS_CARGADOS + ' días. Pulsa “Que la IA decida” y la IA mira la captura y aprueba o anula el reporte. Si lo anula, el lead vuelve a contar en el cupo del asesor.</p></div>' +
       (rol === 'asignador' ? '<div class="acciones"><a class="btn btn-sec" href="#/ajustes">Cambiar el límite de reportes</a></div>' : '') + '</div>' +
       '<div class="herramientas"><div class="chips" role="group" aria-label="Filtrar reportes">' +
       [['pendiente', 'Por revisar'], ['en_revision', 'En revisión'], ['aplicado', 'Cupo devuelto'], ['anulado', 'Anulados'], ['todos', 'Todos']].map(x =>
         '<button type="button" class="chip" data-accion="filtro-le" data-valor="' + x[0] + '" aria-pressed="' + (filtrosLE.estado === x[0]) + '">' + x[1] + ' <span class="cuenta num">' + cuenta(x[0]) + '</span></button>').join('') + '</div></div>' +
       (() => {
-        const sinIA = datos.reportes.filter(r => porRevisar(r) && enRuta(r) && r.evidencia && !r.ia);
-        return revisionMasiva ? '<div class="aviso-ruta" role="status" style="margin-bottom:14px"><span class="punto ok" style="margin-top:7px"></span><div><b>La IA está revisando ' + revisionMasiva.hechos + ' de ' + revisionMasiva.total + '</b><p>Puedes seguir usando el panel; cada tarjeta se actualiza al terminar.</p></div></div>'
-          : sinIA.length ? '<div style="margin-bottom:14px"><button type="button" class="btn btn-lima btn-chico" data-accion="revisar-ia-todos">Revisar con IA los ' + sinIA.length + ' que no tienen revisión</button></div>' : '';
+        const sinIA = datos.reportes.filter(r => porRevisar(r) && enRuta(r) && r.evidencia);
+        return revisionMasiva ? '<div class="aviso-ruta" role="status" style="margin-bottom:14px"><span class="punto ok" style="margin-top:7px"></span><div><b>La IA está decidiendo ' + revisionMasiva.hechos + ' de ' + revisionMasiva.total + '</b><p>Puedes seguir usando el panel; cada tarjeta se actualiza al terminar.</p></div></div>'
+          : sinIA.length ? '<div style="margin-bottom:14px"><button type="button" class="btn btn-lima btn-chico" data-accion="revisar-ia-todos">Que la IA decida los ' + sinIA.length + ' por revisar</button></div>' : '';
       })() +
       '<p class="ayuda" style="margin-bottom:14px">Regla actual: ' + esc(textoReglaLE().replace('Puedes', 'cada asesor puede')) + (datos.ajustes.verificacionIA === 'obligatoria' ? ' La IA revisa cada captura antes de enviarla.' : ' La revisión con IA está apagada.') + '</p>' +
       (lista.length ? '<div class="lista-pases">' + lista.map(reporteHtml).join('') + '</div>' : vacioHtml('No hay reportes aquí', 'Los reportes nuevos aparecen en “Por revisar”.'));
   };
-  // La IA revisa la captura de un reporte ya enviado. Solo opina: aprobar o anular lo decide quien revisa, con un clic.
+  // La IA revisa la captura de un reporte ya enviado y DECIDE: la función del servidor lo aprueba o lo anula
+  // con la sesión de quien lo pidió. Quien revisa puede anular después un reporte que la IA aprobó.
   const revisandoIA = new Set();
   let revisionMasiva = null;
   async function revisarReporteConIA(r, silencioso) {
@@ -1722,7 +1723,15 @@
       else if (!data || !data.ok) msg = (data && data.error) || 'La IA no respondió.';
       if (msg) { if (!silencioso) avisar('La IA no pudo revisarlo: ' + msg, 'err'); return { error: msg }; }
       if (data.veredicto !== 'error') r.ia = { veredicto: data.veredicto, explicacion: data.explicacion || '' };
-      if (!silencioso) avisar(data.veredicto === 'confirma' ? 'La IA da el visto bueno a este reporte.' : data.veredicto === 'no_confirma' ? 'La IA no lo confirma: sugiere anularlo.' : data.veredicto === 'dudoso' ? 'La IA tiene dudas: revísalo tú.' : 'La IA no pudo revisar la captura.', data.veredicto === 'error' ? 'err' : undefined);
+      if (!silencioso) {
+        if (data.error_decision) avisar('La IA decidió ' + (data.veredicto === 'confirma' ? 'aprobarlo' : 'anularlo') + ', pero no se pudo aplicar: ' + data.error_decision, 'err');
+        else if (data.decision === 'aprobado') avisar('La IA aprobó el reporte.');
+        else if (data.decision === 'anulado') avisar('La IA anuló el reporte: ' + (data.explicacion || ''));
+        else if (data.veredicto === 'error') avisar('La IA no pudo revisar la captura. Decide tú con Aprobar o Anular.', 'err');
+        else if (!data.decision) avisar(data.veredicto === 'confirma' ? 'La IA lo da por válido. Despliega la función v1.4 para que lo aplique sola.' : 'La IA no lo da por válido. Despliega la función v1.4 para que lo aplique sola.');
+        else avisar('La IA ' + (data.veredicto === 'confirma' ? 'lo da por válido' : 'no lo da por válido') + ', pero el reparto no lo había aplicado: no hay nada que cambiar.');
+      }
+      if (data.decision === 'aprobado' || data.decision === 'anulado') recargar(100);
       return data;
     } catch (e) {
       if (!silencioso) avisar('La IA no pudo revisarlo: ' + mensajeError(e), 'err');
@@ -1731,20 +1740,20 @@
   }
   async function revisarTodosConIA(lista) {
     revisionMasiva = { hechos: 0, total: lista.length };
-    const cuenta = { confirma: 0, no_confirma: 0, otros: 0, fallos: 0 };
+    const cuenta = { aprobado: 0, anulado: 0, otros: 0, fallos: 0 };
     let i = 0;
     const trabajador = async () => {
       while (i < lista.length) {
         const r = lista[i++];
         const res = await revisarReporteConIA(r, true);
-        if (!res || res.error) cuenta.fallos++; else if (res.veredicto in cuenta) cuenta[res.veredicto]++; else cuenta.otros++;
+        if (!res || res.error || res.error_decision || res.veredicto === 'error') cuenta.fallos++; else if (res.decision in cuenta) cuenta[res.decision]++; else cuenta.otros++;
         revisionMasiva.hechos++; repintar();
         if (res && res.error && /m[aá]ximo|sesi[oó]n|solo asignaci/i.test(res.error)) { i = lista.length; avisar(res.error, 'err'); }
       }
     };
     await Promise.all([trabajador(), trabajador()]);   // de dos en dos para no saturar
     revisionMasiva = null;
-    avisar('Revisión terminada: ' + cuenta.confirma + ' con visto bueno, ' + cuenta.no_confirma + ' para anular, ' + cuenta.otros + ' con dudas' + (cuenta.fallos ? ', ' + cuenta.fallos + ' sin revisar' : '') + '.');
+    avisar('La IA terminó: ' + cuenta.aprobado + ' aprobados y ' + cuenta.anulado + ' anulados' + (cuenta.otros ? ', ' + cuenta.otros + ' sin cambios' : '') + (cuenta.fallos ? ', ' + cuenta.fallos + ' que no pudo decidir (decide tú)' : '') + '.');
     recargar(200);
   }
 
@@ -1753,9 +1762,10 @@
     const l = leadPorId(r.leadId) || (() => { const p = parsearCliente(r.cliente); return { id: null, cliente: p.nombre, origen: p.origen, destino: p.destino }; })();
     const est = ESTADO_REPORTE[r.estado] || [r.estado, 'perdido'];
     const puedeRevisar = veTodo() && porRevisar(r);
-    const lineaIA = r.ia
-      ? '<div class="linea-ia ' + (r.ia.veredicto === 'confirma' ? 'ok' : 'duda') + '"><b>' +
-        (r.ia.veredicto === 'confirma' ? 'La IA confirmó la captura' : r.ia.veredicto === 'no_confirma' ? 'La IA no confirmó la captura' : r.ia.veredicto === 'dudoso' ? 'La IA tiene dudas' : 'La IA no pudo revisar la captura') + '</b>' +
+    const aprobadoPorIA = veTodo() && !porRevisar(r) && r.estado !== 'anulado' && r.estado !== 'no_aplicado' && /^Aprobado por la IA/.test(r.nota || '');
+    const lineaIA = r.ia && !/^(Aprobado|Anulado) por la IA/.test(r.nota || '')
+      ?'<div class="linea-ia ' + (r.ia.veredicto === 'confirma' ? 'ok' : 'duda') + '"><b>' +
+        (r.ia.veredicto === 'confirma' ? 'La IA lo da por válido' : r.ia.veredicto === 'no_confirma' ? 'La IA no lo da por válido' : r.ia.veredicto === 'dudoso' ? 'La IA tenía dudas (revisión anterior)' : 'La IA no pudo revisar la captura') + '</b>' +
         '<span>' + esc(r.ia.explicacion) + '</span></div>'
       : '';
     const avisoRevision = r.estado === 'en_revision'
@@ -1766,14 +1776,15 @@
       '<div style="flex:1;min-width:200px"><b>' + esc(MOTIVOS_LE[r.motivo] || r.motivo) + '</b><p class="tenue" style="font-size:14px;margin-top:2px">“' + esc(r.detalle) + '”</p>' +
       '<p class="muy-tenue" style="font-size:12.5px;margin-top:6px">' + esc(l.cliente) + ' · ' + (veTodo() ? esc(r.asesorNombre || usuario(r.asesorId).nombre) + ' · ' : '') + (esHoy(r.ts) ? 'hoy ' + fmtHora(r.ts) : fmtDia(r.ts)) +
       (r.evidencia ? ' · con captura' : ' · sin captura') + (r.revisadoPor ? ' · revisó ' + esc(r.revisadoPor) : '') + '</p>' +
-      (r.nota ? '<p style="font-size:13.5px;margin-top:6px">Nota de supervisión: ' + esc(r.nota) + '</p>' : '') + lineaIA + avisoRevision + '</div>' +
+      (r.nota ? '<p style="font-size:13.5px;margin-top:6px">' + (/^(Aprobado|Anulado) por la IA/.test(r.nota) ? '' : 'Nota de supervisión: ') + esc(r.nota) + '</p>' : '') + lineaIA + avisoRevision + '</div>' +
       '<span class="estado-et" data-e="' + est[1] + '">' + esc(est[0]) + '</span></div>' +
       (veTodo() ? '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">' +
-        (puedeRevisar && r.ia && r.ia.veredicto === 'confirma' ? '<button type="button" class="btn btn-chico" data-accion="aprobar-le" data-id="' + r.id + '">Aprobar: la IA da el visto bueno</button>' : '') +
-        (puedeRevisar && r.ia && r.ia.veredicto === 'no_confirma' ? '<button type="button" class="btn btn-peligro btn-chico" data-accion="anular-ia" data-id="' + r.id + '">Anular con la nota de la IA</button>' : '') +
-        (puedeRevisar && r.evidencia ? '<button type="button" class="btn btn-sec btn-chico" data-accion="revisar-ia" data-id="' + r.id + '"' + (revisandoIA.has(String(r.id)) ? ' disabled' : '') + '>' + (revisandoIA.has(String(r.id)) ? 'La IA está revisando…' : r.ia ? 'Revisar otra vez con IA' : 'Revisar con IA') + '</button>' : '') +
-        (puedeRevisar ? (r.ia && r.ia.veredicto === 'confirma' ? '' : '<button type="button" class="btn btn-chico' + (r.ia && r.ia.veredicto === 'no_confirma' ? ' btn-sec' : '') + '" data-accion="aprobar-le" data-id="' + r.id + '">' + (r.estado === 'en_revision' ? 'Aprobar y devolver el cupo' : 'Aprobar') + '</button>') +
-          (r.ia && r.ia.veredicto === 'no_confirma' ? '' : '<button type="button" class="btn btn-peligro btn-chico" data-accion="anular-le" data-id="' + r.id + '">Anular</button>') : '') +
+
+
+        (puedeRevisar && r.evidencia ? '<button type="button" class="btn btn-lima btn-chico" data-accion="revisar-ia" data-id="' + r.id + '"' + (revisandoIA.has(String(r.id)) ? ' disabled' : '') + '>' + (revisandoIA.has(String(r.id)) ? 'La IA está decidiendo…' : 'Que la IA decida') + '</button>' : '') +
+        (puedeRevisar ? '<button type="button" class="btn btn-sec btn-chico" data-accion="aprobar-le" data-id="' + r.id + '">' + (r.estado === 'en_revision' ? 'Aprobar y devolver el cupo' : 'Aprobar') + '</button>' +
+          '<button type="button" class="btn btn-peligro btn-chico" data-accion="anular-le" data-id="' + r.id + '">Anular</button>' : '') +
+        (aprobadoPorIA ? '<button type="button" class="btn btn-peligro btn-chico" data-accion="anular-le" data-id="' + r.id + '">Anular de todas formas</button>' : '') +
         (r.evidencia ? '<button type="button" class="btn btn-sec btn-chico" data-accion="ver-captura" data-id="' + r.id + '">Ver captura</button>' : '') +
         (l.id ? '<button type="button" class="btn btn-sec btn-chico" data-accion="abrir-lead" data-id="' + l.id + '">Ver el lead</button>' : '') + '</div>' : '') + '</div>';
   }
@@ -2107,7 +2118,7 @@
       '<label class="campo"><span>Captura como prueba' + (exige ? '' : ' (opcional)') + '</span><input class="entrada" type="file" name="captura" accept="image/*"' + (exige ? ' required' : '') + '></label>' +
       '<div class="resultado-ia oculto" role="status" aria-live="polite"></div>' +
       '<p class="ayuda">' + (conIA
-        ? 'La IA revisa la captura antes de enviarlo. Si lo confirma, se te devuelve el cupo en menos de un minuto y tu próximo lead es la reposición; si no, lo revisa supervisión.'
+        ? 'La IA revisa la captura y tu explicación antes de enviarlo. Si lo aprueba, se te devuelve el cupo en menos de un minuto y tu próximo lead es la reposición; si no, puedes probar con otra captura.'
         : 'Se te devuelve el cupo en menos de un minuto y tu próximo lead será la reposición. Supervisión puede anularlo.') + '</p>' +
       '<p class="error-campo oculto" role="alert"></p>' + botonesModal(conIA ? 'Revisar la captura' : 'Enviar el reporte', true) + '</form>', async (form) => {
       if (cupoLE(yo().id).quedan === 0) return marcarError(form, 'detalle', 'Ya usaste todos tus reportes de hoy.');
@@ -2127,8 +2138,12 @@
         const ia = await verificarCaptura(l, motivo, detalle, archivo);
         revision = { clave, ia };
         pintarResultadoIA(caja, ia, true);
-        boton.textContent = ia.veredicto === 'confirma' ? 'Confirmar y enviar' : 'Enviar a supervisión';
+        boton.textContent = ia.veredicto === 'confirma' ? 'Confirmar y enviar' : ia.veredicto === 'error' ? 'Enviar a supervisión' : 'Revisar otra captura';
         return false;
+      }
+      // La IA decide: si no lo aprobó, no se envía (solo si la IA falló, va a supervisión).
+      if (conIA && revision && revision.ia.veredicto !== 'confirma' && revision.ia.veredicto !== 'error') {
+        return marcarError(form, 'captura', 'La IA no aprobó este reporte. Elige otra captura que lo demuestre y se revisa otra vez.');
       }
       const r = await crearReporteLE(l, motivo, detalle, archivo, revision ? revision.ia : null);
       avisar(r.estado === 'en_revision' ? 'Reporte enviado a supervisión: la IA no pudo confirmarlo. Cuando lo aprueben se te devuelve el cupo.' : 'Reporte enviado. El reparto te devuelve el cupo en el próximo minuto.');
@@ -2165,10 +2180,11 @@
   }
   function pintarResultadoIA(caja, ia, conSiguientePaso) {
     caja.className = 'resultado-ia ' + (ia.veredicto === 'confirma' ? 'ok' : 'duda');
-    caja.innerHTML = '<b>' + (ia.veredicto === 'confirma' ? 'La IA confirma el reporte' : ia.veredicto === 'no_confirma' ? 'La captura no lo demuestra' : ia.veredicto === 'dudoso' ? 'La IA tiene dudas' : 'No se pudo revisar la captura') + '</b>' +
+    caja.innerHTML = '<b>' + (ia.veredicto === 'confirma' ? 'La IA aprueba el reporte' : ia.veredicto === 'error' ? 'No se pudo revisar la captura' : 'La IA no aprueba el reporte') + '</b>' +
       '<span>' + esc(ia.explicacion) + '</span>' +
       (ia.loQueMuestra ? '<small>Lo que se ve: ' + esc(ia.loQueMuestra) + '</small>' : '') +
-      (conSiguientePaso && ia.veredicto !== 'confirma' ? '<small>Puedes cambiar la captura para que se revise otra vez. Si lo envías así, queda en revisión de supervisión y el cupo se devuelve cuando lo aprueben.</small>' : '');
+      (conSiguientePaso && ia.veredicto === 'error' ? '<small>Si lo envías así, queda en revisión de supervisión y el cupo se devuelve cuando lo aprueben.</small>'
+        : conSiguientePaso && ia.veredicto !== 'confirma' ? '<small>Así no se puede enviar. Si tienes otra captura que lo demuestre, cámbiala y se revisa otra vez.</small>' : '');
   }
 
   // reportar_lead_erroneo valida en el servidor dueño, día, límite y (si hay) la revisión de la IA.
@@ -2626,10 +2642,10 @@
       case 'revisar-ia': { const r = datos.reportes.find(x => String(x.id) === b.dataset.id); if (r) revisarReporteConIA(r); break; }
       case 'revisar-ia-todos': {
         if (revisionMasiva) break;
-        const lista = datos.reportes.filter(r => porRevisar(r) && (rutaFiltro === 'TODAS' || r.ruta === rutaFiltro) && r.evidencia && !r.ia);
+        const lista = datos.reportes.filter(r => porRevisar(r) && (rutaFiltro === 'TODAS' || r.ruta === rutaFiltro) && r.evidencia);
         if (!lista.length) break;
-        abrirModal('<form class="formulario"><h2 id="modalTitulo">Revisar ' + lista.length + ' reportes con IA</h2><p>La IA mira la captura de cada uno y deja su opinión en la tarjeta: visto bueno o anular. No aprueba ni anula nada sola: eso lo haces tú con un clic.</p>' +
-          '<p class="ayuda">Cuesta unos 1 a 2 centavos de dólar por captura (unos ' + Math.max(1, Math.round(lista.length * 0.015 * 100) / 100) + ' dólares en total). Tarda unos segundos por reporte.</p>' + botonesModal('Revisar con IA') + '</form>',
+        abrirModal('<form class="formulario"><h2 id="modalTitulo">Que la IA decida ' + lista.length + ' reportes</h2><p>La IA mira la captura y la explicación de cada uno y lo aprueba o lo anula ella misma. Después puedes anular uno que haya aprobado; uno anulado ya no se puede recuperar.</p>' +
+          '<p class="ayuda">Cuesta unos 1 a 2 centavos de dólar por captura (unos ' + Math.max(1, Math.round(lista.length * 0.015 * 100) / 100) + ' dólares en total). Tarda unos segundos por reporte.</p>' + botonesModal('Que la IA decida') + '</form>',
           () => { revisarTodosConIA(lista); return true; });
         break;
       }
