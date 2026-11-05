@@ -108,9 +108,9 @@
     display: flex; align-items: center; gap: 14px; min-height: 64px; padding: 10px 12px 10px 22px; border-radius: 999px;
     background: linear-gradient(105deg, #433C98 0%, var(--violeta) 45%, #5B52C2 100%); color: #fff;
     box-shadow: 0 14px 34px -18px rgba(60, 50, 150, .75), inset 0 1px 0 rgba(255, 255, 255, .14);
-    transition: padding var(--t), min-height var(--t), box-shadow var(--t), margin var(--t);
+    transition: box-shadow var(--t);
   }
-  .barra.compacta { min-height: 56px; padding-top: 6px; padding-bottom: 6px; box-shadow: 0 18px 40px -16px rgba(60, 50, 150, .85), inset 0 1px 0 rgba(255, 255, 255, .14); }
+  .barra.compacta { box-shadow: 0 18px 40px -14px rgba(60, 50, 150, .9), inset 0 1px 0 rgba(255, 255, 255, .14); }
   .marca { display: inline-flex; align-items: center; flex: none; padding: 4px 6px; margin-right: 6px; border-radius: 12px; transition: transform var(--t); }
   .marca:hover { transform: scale(1.04); }
   .logo { height: 26px; width: auto; display: block; }
@@ -535,13 +535,11 @@
     .lateral.abierto { transform: none; box-shadow: var(--sombra); }
     .menu-movil { display: inline-grid; }
     .barra { margin: 8px 10px 0; top: 8px; border-radius: 26px; padding: 10px 12px; gap: 10px; flex-wrap: wrap; }
-    .barra.compacta { padding-top: 8px; padding-bottom: 8px; }
     .marca { margin-right: 0; }
     .logo { height: 22px; }
     .barra .usuario { gap: 8px; }
     .buscador { order: 5; max-width: none; flex-basis: 100%; }
     .barra .segmentado { order: 4; }
-    .barra.compacta .buscador:not(:focus-within) { display: none; }
     .cifra:last-child:nth-child(odd) { grid-column: 1 / -1; }
     .cifras { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .usuario .quien { display: none; }
@@ -1309,12 +1307,12 @@
 
   function pintarNavegacion() {
     const actual = seccionActual();
-    $('#nav').innerHTML = secciones().map(s => s.grupo
+    suave($('#nav')).innerHTML = secciones().map(s => s.grupo
       ? '<div class="nav-grupo">' + esc(s.grupo) + '</div>'
       : '<a href="#/' + s.id + '"' + (s.id === actual ? ' aria-current="page"' : '') + '>' + icono(s.id) + esc(s.nombre) +
         (contadorNav(s.id) ? '<span class="contador-nav" aria-label="' + contadorNav(s.id) + ' pendientes">' + contadorNav(s.id) + '</span>' : '') + '</a>').join('');
     const rapidas = rol === 'asesor' ? ['inicio', 'leads', 'erroneos'] : ['inicio', 'leads', 'erroneos', 'equipo'];
-    $('#navInferior').innerHTML = rapidas.map(id => {
+    suave($('#navInferior')).innerHTML = rapidas.map(id => {
       const s = secciones().find(x => x.id === id);
       return '<a href="#/' + id + '"' + (id === actual ? ' aria-current="page"' : '') + '>' + icono(id) + esc(s.nombre.replace('Mis leads', 'Leads').replace('Leads erróneos', 'Erróneos').replace('Turnos y cupos', 'Equipo')) + '</a>';
     }).join('') + '<button type="button" data-accion="abrir-menu" aria-controls="lateral">' + icono('mas') + 'Más</button>';
@@ -1328,7 +1326,7 @@
     if (rutaFiltro !== 'TODAS' && !rutasVisibles.includes(rutaFiltro)) rutaFiltro = 'TODAS';
     const sel = $('#selRuta');
     sel.classList.toggle('oculto', rutasVisibles.length < 2);
-    sel.innerHTML = ['TODAS', ...rutasVisibles].map(r => '<button type="button" data-ruta="' + r + '" aria-pressed="' + (r === rutaFiltro) + '">' + (r === 'TODAS' ? 'Todas' : RUTAS[r]) + '</button>').join('');
+    suave(sel).innerHTML = ['TODAS', ...rutasVisibles].map(r => '<button type="button" data-ruta="' + r + '" aria-pressed="' + (r === rutaFiltro) + '">' + (r === 'TODAS' ? 'Todas' : RUTAS[r]) + '</button>').join('');
     $('#fabAsistente').classList.toggle('oculto', rol !== 'asesor' || $('#asistente').classList.contains('abierto'));
     pintarTurnoLateral();
   }
@@ -1338,15 +1336,15 @@
     if (rol !== 'asesor') {
       const cuantos = asesoresActivos(rutaFiltro).filter(x => x.enTurno).length;
       const t = turnoActual();
-      el.innerHTML = '<div class="estado"><span class="punto ' + (cuantos ? 'ok' : '') + '"></span>' + cuantos + ' asesores en turno</div><p class="muy-tenue" style="margin-top:4px">' + (t === 'AM' ? 'Turno AM, de 9:00 a 17:00' : t === 'PM' ? 'Turno PM, de 18:00 a 23:00' : 'Ahora no hay turno abierto') + '</p>';
+      suave(el).innerHTML = '<div class="estado"><span class="punto ' + (cuantos ? 'ok' : '') + '"></span>' + cuantos + ' asesores en turno</div><p class="muy-tenue" style="margin-top:4px">' + (t === 'AM' ? 'Turno AM, de 9:00 a 17:00' : t === 'PM' ? 'Turno PM, de 18:00 a 23:00' : 'Ahora no hay turno abierto') + '</p>';
       return;
     }
     if (!yo().rutas.length) {
-      el.innerHTML = '<div class="estado"><span class="punto alerta"></span>Sin ruta asignada</div><p class="muy-tenue" style="margin-top:4px">Habla con tu asignadora</p>';
+      suave(el).innerHTML = '<div class="estado"><span class="punto alerta"></span>Sin ruta asignada</div><p class="muy-tenue" style="margin-top:4px">Habla con tu asignadora</p>';
       return;
     }
     const dentro = miTurno(), t = turnoActual();
-    el.innerHTML = '<div class="estado"><span class="punto ' + (dentro ? 'ok' : '') + '"></span>' + (dentro ? 'Recibiendo leads' : 'Fuera del turno') + '</div>' +
+    suave(el).innerHTML = '<div class="estado"><span class="punto ' + (dentro ? 'ok' : '') + '"></span>' + (dentro ? 'Recibiendo leads' : 'Fuera del turno') + '</div>' +
       '<p class="muy-tenue" style="margin-top:4px">' + (dentro ? 'Turno ' + t + ' hasta las ' + (t === 'AM' ? '17:00' : '23:00') : t ? 'Turno ' + t + ' abierto hasta las ' + (t === 'AM' ? '17:00' : '23:00') : 'Ahora no hay turno abierto. AM de 9:00 a 17:00 y PM de 18:00 a 23:00.') + '</p>' +
       (!dentro && t ? '<button type="button" class="btn btn-lima btn-chico" style="margin-top:10px;width:100%" data-accion="turno-registrar"' + (registrandoTurno ? ' disabled' : '') + '>' + (registrandoTurno ? 'Registrando…' : 'Registrarme en el turno') + '</button>' : '');
   }
@@ -1955,6 +1953,7 @@
     const l = leadPorId(id); if (!l) return;
     if (!$('#cajon').classList.contains('abierto')) focoPrevio = document.activeElement;
     leadAbierto = l.id; pestanaLead = pestana || 'resumen';
+    $('#cajon').innerHTML = '';
     pintarCajon();
     $('#cajon').classList.add('abierto'); $('#cajon').setAttribute('aria-hidden', 'false');
     $('#veloCajon').classList.add('abierto');
@@ -2005,7 +2004,7 @@
     const puedeReportarLE = esMio && datos.ajustes.disponible && datos.ajustes.activo && !yaReportado && !reportesLead.some(r => r.estado === 'anulado') &&
       !contactado && !['cerrado', 'erroneo', 'perdido'].includes(l.estado);
 
-    $('#cajon').innerHTML =
+    suave($('#cajon')).innerHTML =
       '<div class="cajon-cab"><div class="fila"><div><span class="ruta"><span class="ruta-cod" id="cajonTitulo">' + esc(codigo(l.origen)) + '</span>' + TRAYECTO.replace('class="trayecto"', 'class="trayecto" style="width:70px;height:18px"') + '<span class="ruta-cod">' + esc(codigo(l.destino)) + '</span></span>' +
         '<div class="muy-tenue" style="font-size:13px;margin-top:4px">Lead ' + l.id + ' · ' + esc(RUTAS[l.ruta] || l.ruta) + '</div></div>' +
         '<button type="button" class="btn-icono cerrar" data-accion="cerrar-cajon" aria-label="Cerrar el lead"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>' +
@@ -2025,7 +2024,8 @@
 
   // ---- Comprobante de contacto (igual que el panel actual: imagen chica en leads.foto_contacto_url) ----
   function activarZonaArchivos() {
-    const zona = $('#zonaArchivos'); if (!zona) return;
+    const zona = $('#zonaArchivos'); if (!zona || zona._activa) return;
+    zona._activa = true;
     ['dragenter', 'dragover'].forEach(ev => zona.addEventListener(ev, e => { e.preventDefault(); zona.classList.add('encima'); }));
     ['dragleave', 'drop'].forEach(ev => zona.addEventListener(ev, e => { e.preventDefault(); zona.classList.remove('encima'); }));
     zona.addEventListener('drop', e => agregarArchivos(e.dataTransfer.files));
@@ -2492,13 +2492,83 @@
   // ======================================================
   // PINTADO GENERAL
   // ======================================================
-  let ultimaSeccion = null;
+  // ---- Repintado sin parpadeo ----
+  // Antes cada recarga en vivo borraba y volvía a crear toda la pantalla: parpadeo, hover perdido,
+  // desplegables cerrados, foco y scroll perdidos. Ahora se compara con lo que ya hay y solo se
+  // cambia lo distinto (textos, atributos y los elementos que de verdad cambiaron).
+  function mismoNodo(x, y) {
+    if (x.nodeType !== y.nodeType || x.nodeName !== y.nodeName) return false;
+    if (x.nodeType !== 1) return true;
+    return (x.id || '') === (y.id || '') && (x.getAttribute('data-id') || '') === (y.getAttribute('data-id') || '') &&
+      (x.getAttribute('type') || '') === (y.getAttribute('type') || '') && (x.getAttribute('name') || '') === (y.getAttribute('name') || '');
+  }
+  function igualarAtributos(x, y) {
+    for (const at of Array.from(x.attributes)) {
+      if (y.hasAttribute(at.name)) continue;
+      if (at.name === 'open' && x.nodeName === 'DETAILS') continue;      // lo abrió la persona: se respeta
+      x.removeAttribute(at.name);
+    }
+    for (const at of Array.from(y.attributes)) if (x.getAttribute(at.name) !== at.value) x.setAttribute(at.name, at.value);
+    if (x.nodeName === 'INPUT' && x !== document.activeElement && x.type !== 'file') {
+      if (x.type === 'checkbox' || x.type === 'radio') x.checked = y.hasAttribute('checked');
+      else { const v = y.getAttribute('value') || ''; if (x.value !== v) x.value = v; }
+    }
+  }
+  // Clave de una tarjeta (lead, reporte, asesor): permite moverla en vez de rehacerla cuando entra una nueva arriba.
+  const claveDe = (n) => n.nodeType === 1 ? (n.id ? '#' + n.id : n.getAttribute('data-id') ? n.nodeName + '|' + (n.getAttribute('data-accion') || '') + '|' + n.getAttribute('data-id') : null) : null;
+  function igualarHijos(viejo, nuevo) {
+    const a = viejo.childNodes, b = Array.from(nuevo.childNodes);
+    const porClave = new Map(), clavesNuevas = new Set();
+    for (const n of Array.from(a)) { const k = claveDe(n); if (k && !porClave.has(k)) porClave.set(k, n); }
+    for (const n of b) { const k = claveDe(n); if (k) clavesNuevas.add(k); }
+    for (let i = 0; i < b.length; i++) {
+      const nb = b[i];
+      let na = a[i];
+      const k = claveDe(nb);
+      if (k && (!na || claveDe(na) !== k)) {
+        const igual = porClave.get(k);
+        if (igual && igual.parentNode === viejo && mismoNodo(igual, nb)) { viejo.insertBefore(igual, na || null); na = igual; }
+      }
+      if (!na) { viejo.appendChild(nb); continue; }
+      if (!mismoNodo(na, nb)) {
+        // Si la tarjeta que está aquí sigue haciendo falta más abajo, la nueva entra delante (no la pisa).
+        const kv = claveDe(na);
+        if (kv && clavesNuevas.has(kv)) viejo.insertBefore(nb, na); else viejo.replaceChild(nb, na);
+        continue;
+      }
+      if (na.nodeType !== 1) { if (na.nodeValue !== nb.nodeValue) na.nodeValue = nb.nodeValue; continue; }
+      igualarAtributos(na, nb);
+      if (na.nodeName === 'TEXTAREA') { if (na !== document.activeElement && na.value !== nb.value) na.value = nb.value; continue; }
+      igualarHijos(na, nb);
+      if (na.nodeName === 'SELECT' && na !== document.activeElement) {
+        const elegida = nb.querySelector('option[selected]'); const v = elegida ? elegida.value : (na.options[0] && na.options[0].value);
+        if (v != null && na.value !== v) na.value = v;
+      }
+    }
+    while (a.length > b.length) viejo.removeChild(viejo.lastChild);
+  }
+  function pintarEn(el, html) {
+    if (!el) return;
+    if (!el.firstChild) { el.innerHTML = html; return; }
+    const molde = document.createElement('template'); molde.innerHTML = html;
+    igualarHijos(el, molde.content);
+  }
+  // Para cambiar "x.innerHTML = ..." por "suave(x).innerHTML = ..." sin reescribir cada pintado.
+  const suave = (el) => ({ set innerHTML(html) { pintarEn(el, html); } });
+
+  let ultimaSeccion = null, quitarEntrada = null;
   function repintar() {
     pintarNavegacion();
     const id = seccionActual();
     const vista = $('#vista');
-    vista.innerHTML = VISTAS[id]();
-    if (id !== ultimaSeccion) { ultimaSeccion = id; vista.classList.remove('entrando'); void vista.offsetWidth; vista.classList.add('entrando'); }
+    if (id !== ultimaSeccion) {
+      // Sección nueva: se pinta de cero y entra con una animación suave (una sola vez).
+      ultimaSeccion = id; vista.innerHTML = VISTAS[id]();
+      vista.classList.remove('entrando'); void vista.offsetWidth; vista.classList.add('entrando');
+      clearTimeout(quitarEntrada); quitarEntrada = setTimeout(() => vista.classList.remove('entrando'), 600);
+    } else {
+      suave(vista).innerHTML = VISTAS[id]();
+    }
     if (id === 'ajustes') pintarPreviaLE();
     if (leadAbierto) pintarCajon();
   }
