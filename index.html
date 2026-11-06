@@ -2120,7 +2120,9 @@
 
   // ---- Cambiar el estado de un lead (update con .select: 0 filas = Supabase no lo dejó) ----
   // El contacto se prueba con la captura: sin ella el lead no pasa a Contactado ni a Venta cerrada.
-  const faltaComprobante = (l) => !l.comprobante && !l.contactadoEn;
+  // Solo para leads asignados desde que se publicó esta regla (5 nov 2026, 7:51 pm Caracas): los viejos siguen como antes.
+  const COMPROBANTE_OBLIGATORIO_DESDE = Date.parse('2026-11-05T19:51:45-04:00');
+  const faltaComprobante = (l) => l.asignado >= COMPROBANTE_OBLIGATORIO_DESDE && !l.comprobante && !l.contactadoEn;
   function pedirComprobante() {
     avisar('Primero sube la captura del primer contacto: es la prueba de que de verdad lo contactaste.', 'err');
     const zona = $('#zonaArchivos');
