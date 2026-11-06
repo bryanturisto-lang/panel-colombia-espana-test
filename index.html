@@ -844,8 +844,8 @@
     return Number((p.find(x => x.type === 'hour') || {}).value) % 24;
   }
   // Turnos (hora de Caracas): AM hasta las 17:00 y PM de 18:00 a 23:00. El AM abre a una hora distinta por ruta:
-  // España desde las 6:30 (por la diferencia horaria), Colombia desde las 9:00.
-  const APERTURA_AM = { COLOMBIA: 9 * 60, ESPANA: 6 * 60 + 30 };
+  // España desde las 4:00 (por la diferencia horaria; el Apps Script de España acepta desde las 4), Colombia desde las 9:00.
+  const APERTURA_AM = { COLOMBIA: 9 * 60, ESPANA: 4 * 60 };
   const hhmm = (min) => Math.floor(min / 60) + ':' + String(min % 60).padStart(2, '0');
   function minutosCaracas() {
     const p = new Intl.DateTimeFormat('en-GB', { timeZone: ZONA, hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
@@ -1467,7 +1467,7 @@
     if (faltan.length <= 1) {
       const otra = yo().rutas.length > 1 && faltan.length === 1;
       return '<button type="button" class="btn btn-lima' + c + '" data-accion="turno-registrar" data-valor="' + (faltan[0] || '') + '">' +
-        (otra ? 'Registrarme también en ' + esc(RUTAS[faltan[0]]) : 'Registrarme en el turno') + '</button>';
+        (otra ? (yo().registros.some(x => x.turno === turnoActual()) ? 'Registrarme también en ' : 'Registrarme en ') + esc(RUTAS[faltan[0]]) : 'Registrarme en el turno') + '</button>';
     }
     return '<div class="opciones-registro" role="group" aria-label="Dónde registrarte">' +
       faltan.map(r => '<button type="button" class="btn btn-sec' + c + '" data-accion="turno-registrar" data-valor="' + r + '">Solo ' + esc(RUTAS[r]) + '</button>').join('') +
