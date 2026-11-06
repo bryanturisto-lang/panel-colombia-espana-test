@@ -284,6 +284,8 @@
   .turno-cta p { color: var(--niebla-2); font-size: 14px; }
   .turno-cta .punto { width: 12px; height: 12px; align-self: flex-start; margin-top: 6px; }
   .turno-cta .btn { flex: none; }
+  .opciones-registro { display: flex; gap: 8px; flex-wrap: wrap; }
+  .turno .opciones-registro .btn { flex: 1 1 auto; }
   @media (max-width: 1080px) { .rejilla-inicio.es-asesor > .columna { order: -1; } }
   @media (max-width: 560px) { .turno-cta .btn { width: 100%; } }
   .aviso-hoja { border: 1px solid color-mix(in srgb, var(--ambar) 45%, var(--linea-suave)); background: color-mix(in srgb, var(--ambar) 8%, transparent); border-radius: var(--r-m); padding: 12px 14px; margin: 12px 0; font-size: 14px; }
@@ -1380,7 +1382,9 @@
     const dentro = miTurno(), t = turnoActual();
     suave(el).innerHTML = '<div class="estado"><span class="punto ' + (dentro ? 'ok' : '') + '"></span>' + (dentro ? 'Recibiendo leads' : 'Fuera del turno') + '</div>' +
       '<p class="muy-tenue" style="margin-top:4px">' + (dentro ? 'Turno ' + t + ' hasta las ' + (t === 'AM' ? '17:00' : '23:00') : t ? 'Turno ' + t + ' abierto hasta las ' + (t === 'AM' ? '17:00' : '23:00') : 'Ahora no hay turno abierto. ' + textoHorario()) + '</p>' +
-      (!dentro && t ? '<button type="button" class="btn btn-lima btn-chico" style="margin-top:10px;width:100%" data-accion="turno-registrar"' + (registrandoTurno ? ' disabled' : '') + '>' + (registrandoTurno ? 'Registrando…' : 'Registrarme en el turno') + '</button>' : '');
+      (!dentro && t ? (rutasPorRegistrar(yo(), t).length > 1
+        ? '<a class="btn btn-lima btn-chico" style="margin-top:10px;width:100%" href="#/inicio">Elegir dónde registrarme</a>'
+        : '<button type="button" class="btn btn-lima btn-chico" style="margin-top:10px;width:100%" data-accion="turno-registrar" data-valor=""' + (registrandoTurno ? ' disabled' : '') + '>' + (registrandoTurno ? 'Registrando…' : 'Registrarme en el turno') + '</button>') : '');
   }
 
   // ======================================================
@@ -1453,17 +1457,31 @@
 
   let registrandoTurno = false;
   // Llamada a la acción arriba de todo: sin esto, en el celular el botón quedaba debajo de la lista de leads.
+  // Rutas abiertas en las que la persona todavía no está registrada en este turno.
+  const rutasPorRegistrar = (u, t) => u.rutas.filter(r => turnoActual(r) && !u.registros.some(x => x.ruta === r && x.turno === t));
+  // Con una ruta: un botón. Con dos: "Solo Colombia", "Solo España" y "Las dos".
+  function botonesRegistro(faltan, chico) {
+    const c = chico ? ' btn-chico' : '';
+    if (registrandoTurno) return '<button type="button" class="btn btn-lima registrando' + c + '" disabled>Registrando en la hoja…</button>';
+    if (faltan.length <= 1) {
+      const otra = yo().rutas.length > 1 && faltan.length === 1;
+      return '<button type="button" class="btn btn-lima' + c + '" data-accion="turno-registrar" data-valor="' + (faltan[0] || '') + '">' +
+        (otra ? 'Registrarme también en ' + esc(RUTAS[faltan[0]]) : 'Registrarme en el turno') + '</button>';
+    }
+    return '<div class="opciones-registro" role="group" aria-label="Dónde registrarte">' +
+      faltan.map(r => '<button type="button" class="btn btn-sec' + c + '" data-accion="turno-registrar" data-valor="' + r + '">Solo ' + esc(RUTAS[r]) + '</button>').join('') +
+      '<button type="button" class="btn btn-lima' + c + '" data-accion="turno-registrar" data-valor="">' + (faltan.length === 2 ? 'Las dos' : 'Todas') + '</button></div>';
+  }
   function avisoTurnoHtml() {
     const u = yo(), t = turnoActual();
     if (!u.rutas.length || !t) return '';
-    const faltan = u.rutas.filter(r => turnoActual(r) && !u.registros.some(x => x.ruta === r && x.turno === t));
+    const faltan = rutasPorRegistrar(u, t);
     if (!faltan.length) return '';
     const parcial = u.registros.some(x => x.turno === t);      // ya está en alguna ruta de este turno
     return '<section class="turno-cta" aria-labelledby="tCta"><span class="punto ' + (parcial ? 'ok' : 'alerta') + '"></span><div class="texto"><b id="tCta">' +
-      (parcial ? 'Te falta registrarte en ' + esc(nombreRutas(faltan)) : 'No estás recibiendo leads') + '</b>' +
-      '<p>El turno ' + t + ' está abierto hasta las ' + (t === 'AM' ? '17:00' : '23:00') + ' (hora de Caracas). Regístrate para entrar en la lista de reparto' + (u.rutas.length > 1 ? ' de ' + esc(nombreRutas(faltan)) : '') + '.</p></div>' +
-      (registrandoTurno ? '<button type="button" class="btn btn-lima registrando" disabled>Registrando en la hoja…</button>'
-        : '<button type="button" class="btn btn-lima" data-accion="turno-registrar">' + (faltan.length > 1 ? 'Registrarme en mis ' + faltan.length + ' rutas' : 'Registrarme en el turno') + '</button>') + '</section>';
+      (parcial ? '¿También quieres recibir de ' + esc(nombreRutas(faltan)) + '?' : 'No estás recibiendo leads') + '</b>' +
+      '<p>' + (parcial ? 'Ya estás recibiendo leads de ' + esc(nombreRutas(u.registros.filter(x => x.turno === t).map(x => x.ruta))) + '. Si quieres, regístrate también aquí. ' : '') + 'El turno ' + t + ' está abierto hasta las ' + (t === 'AM' ? '17:00' : '23:00') + ' (hora de Caracas). ' + (parcial ? '' : faltan.length > 1 ? 'Elige dónde quieres recibir leads: en una tienda o en las dos.' : 'Regístrate para entrar en la lista de reparto' + (u.rutas.length > 1 ? ' de ' + esc(RUTAS[faltan[0]]) : '') + '.') + '</p></div>' +
+      botonesRegistro(faltan) + '</section>';
   }
   function turnoHtml() {
     const u = yo();
@@ -1498,7 +1516,8 @@
     }).join('');
     const boton = !t ? '<button type="button" class="btn btn-sec" disabled>Registro cerrado ahora</button>'
       : registrandoTurno ? '<button type="button" class="btn btn-lima registrando" disabled>Registrando en la hoja…</button>'
-      : '<button type="button" class="btn ' + (dentro ? 'btn-sec' : 'btn-lima') + '" data-accion="turno">' + (dentro ? 'Salir del turno' : (u.rutas.length > 1 ? 'Registrarme en mis ' + u.rutas.length + ' rutas' : 'Registrarme en el turno')) + '</button>';
+      : dentro ? '<button type="button" class="btn btn-sec" data-accion="turno">Salir del turno</button>'
+      : botonesRegistro(rutasPorRegistrar(u, t));
     return '<section class="bloque turno" aria-labelledby="tTurno"><h2 id="tTurno">Tu turno' + (t ? ' ' + t : '') + '</h2>' +
       '<div class="reloj num" id="reloj">' + fmtHora(Date.now()) + '</div>' +
       '<div class="estado-turno"><span class="punto ' + (dentro && fuera.length < registradas.length ? 'ok' : dentro ? 'alerta' : '') + '"></span>' + (!dentro ? 'No estás recibiendo leads' : fuera.length >= registradas.length ? 'Fuera de la lista de reparto' : 'Estás en la lista de reparto') + '</div>' +
@@ -2751,7 +2770,7 @@
       }
       case 'turno-registrar':
         if ($('#lateral').classList.contains('abierto')) { $('#lateral').classList.remove('abierto'); $('#veloLateral').classList.remove('abierto'); }
-        registrarseEnTurno(); break;
+        registrarseEnTurno(val ? [val] : null); break;
       case 'pausa': cambiarPausa(val); break;
       case 'anotar-turno': if (rol === 'asignador') modalAnotarTurno(); break;
       case 'rol-asignador': {
@@ -2935,11 +2954,11 @@
 
   // ---- Turno: primero la hoja de reparto (Apps Script), después Supabase ----
   // La hoja decide a quién le llegan leads; registros_turno es el espejo que lee el panel.
-  async function registrarseEnTurno() {
+  async function registrarseEnTurno(soloRutas) {
     const u = yo(), t = turnoActual();
     if (!t) { avisar('El registro está cerrado ahora. ' + textoHorario(), 'err'); return; }
-    const pendientes = u.rutas.filter(r => turnoActual(r) && !u.registros.some(x => x.ruta === r && x.turno === t));
-    const cerradas = rutasSinAbrir(u);
+    const pendientes = rutasPorRegistrar(u, t).filter(r => !soloRutas || soloRutas.includes(r));
+    const cerradas = soloRutas ? [] : rutasSinAbrir(u);
     if (cerradas.length) avisar('El turno de ' + nombreRutas(cerradas) + ' todavía no abre (desde las ' + cerradas.map(r => hhmm(APERTURA_AM[r])).join(' y ') + '). Te registro en ' + (pendientes.length ? nombreRutas(pendientes) : 'nada por ahora') + '.');
     if (!pendientes.length) { recargar(50); return; }
     registrandoTurno = true; repintar();
