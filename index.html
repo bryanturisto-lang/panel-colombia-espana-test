@@ -683,6 +683,11 @@
   .vista.entrando > *:nth-child(n+4) { animation-delay: 120ms; }
   @keyframes subir { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
   @keyframes aparecer { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+  .seguimiento-fila { grid-template-columns: 76px minmax(0, 1fr) auto; }
+  .seguimiento-hora { font: 700 18px 'Space Grotesk', sans-serif; display: flex; flex-direction: column; line-height: 1.1; }
+  .seguimiento-hora small { font: 600 12px 'Inter', sans-serif; color: var(--niebla-2); }
+  .seguimiento-hora.vencido { color: var(--coral); }
+  @media (max-width: 420px) { .seguimiento-fila { grid-template-columns: 64px minmax(0, 1fr); } .seguimiento-fila .acc { grid-column: 1 / -1; } }
 </style>
 </head>
 <body>
@@ -812,7 +817,7 @@
   const ORDEN = { nuevo: 0, contactado: 1, cotizado: 2, seguimiento: 3, cerrado: 4 };
   const RUTAS = { COLOMBIA: 'Colombia', ESPANA: 'España' };
   const MOTIVOS_LE = {
-    numero_invalido: 'El número no existe o no tiene WhatsApp', no_solicito: 'Dice que no pidió información',
+    numero_invalido: 'El número no existe o no tiene WhatsApp', no_solicito: 'Dice que no pidió información o que ya no le interesa',
     duplicado: 'Repetido o ya era cliente', otra_ruta: 'Es de otra ruta o país', datos_falsos: 'Datos falsos o de prueba', otro: 'Otro motivo'
   };
   const TIPOS_DOC = ['Comprobante de contacto', 'Cotización', 'Pasaporte o documento', 'Comprobante de pago', 'Otro'];
@@ -908,7 +913,8 @@
       asignado: f.hora_asignacion ? new Date(f.hora_asignacion).getTime() : Date.parse((f.fecha || hoyClave()) + 'T16:00:00Z'),
       contactadoEn: f.contactado_en ? new Date(f.contactado_en).getTime() : null,
       comprobante: !!(f.tiene_comprobante || f.foto_contacto_url), fecha: f.fecha,
-      fuente: 'reparto', validacion: null, actividad: [], docs: [], proxima: null, venta: null, perdida: null
+      fuente: 'reparto', validacion: null, actividad: [], docs: [], venta: null, perdida: null,
+      proxima: f.seguimiento_en ? { ts: new Date(f.seguimiento_en).getTime(), accion: f.seguimiento_nota || 'Hacer seguimiento' } : null
     };
   }
   function reporteDesdeFila(f) {
@@ -1029,8 +1035,10 @@
   const datosVacios = () => ({ usuarios: [], leads: [], reportes: [], ajustes: { activo: true, limiteDiario: 3, exigirCaptura: true, verificacionIA: 'apagada', modoLE: 'fijo', cupoDiario: null } });
   datos = datosVacios();
   function guardar() { /* en la versión conectada todo se guarda en Supabase al momento */ }
+  let haySeguimiento = false;       // la base ya tiene leads.seguimiento_en (SQL 07)
 
-  const COLUMNAS_LEADS = ['id, cliente, fecha, hora_asignacion, estado, asesor_id, ruta, tiene_comprobante, contactado_en',
+  const COLUMNAS_LEADS = ['id, cliente, fecha, hora_asignacion, estado, asesor_id, ruta, tiene_comprobante, contactado_en, seguimiento_en, seguimiento_nota',
+    'id, cliente, fecha, hora_asignacion, estado, asesor_id, ruta, tiene_comprobante, contactado_en',
     'id, cliente, fecha, hora_asignacion, estado, asesor_id, ruta, contactado_en'];
   async function cargarDatos() {
     const hoy = hoyClave(), desde = fechaConDesfase(-(DIAS_CARGADOS - 1));
@@ -1065,10 +1073,22 @@
           if (!veTodoAhora) q = q.eq('asesor_id', miId);
           return q;
         });
+        haySeguimiento = col.includes('seguimiento_en');
         break;
       } catch (e) { ultimoError = e; }
     }
     if (!filasLeads) throw ultimoError;
+    // Leads más viejos que tienen un seguimiento pendiente (un seguimiento puede ser para dentro de semanas).
+    if (haySeguimiento) {
+      try {
+        let q = sb.from('leads').select(COLUMNAS_LEADS[0]).lt('fecha', desde).not('seguimiento_en', 'is', null).in('ruta', rutasConsulta).order('id', { ascending: false }).limit(500);
+        if (!veTodoAhora) q = q.eq('asesor_id', miId);
+        const { data, error } = await q;
+        if (error) throw error;
+        const ya = new Set(filasLeads.map(f => f.id));
+        (data || []).forEach(f => { if (!ya.has(f.id)) filasLeads.push(f); });
+      } catch (e) { console.warn('seguimientos viejos', e); }
+    }
 
     // Reportes de leads erróneos
     const IA = ', veredicto_ia, explicacion_ia';
@@ -1323,6 +1343,7 @@
     const s = [
       { id: 'inicio', nombre: 'Inicio' },
       { id: 'leads', nombre: rol === 'asesor' ? 'Mis leads' : 'Leads' },
+      { id: 'agenda', nombre: 'Seguimiento' },
       { id: 'erroneos', nombre: 'Leads erróneos' },
       { grupo: 'Equipo', solo: ['asignador', 'supervisor'] },
       { id: 'asesores', nombre: 'Asesores y rutas', solo: ['asignador'] },
@@ -1339,6 +1360,7 @@
   function contadorNav(id) {
     if (id === 'erroneos' && veTodo()) return datos.reportes.filter(porRevisar).length;
     if (id === 'asesores') return sinRuta().length;
+    if (id === 'agenda') return seguimientosPendientes().filter(l => l.proxima.ts <= finDeHoy()).length;
     return 0;
   }
 
@@ -1348,7 +1370,7 @@
       ? '<div class="nav-grupo">' + esc(s.grupo) + '</div>'
       : '<a href="#/' + s.id + '"' + (s.id === actual ? ' aria-current="page"' : '') + '>' + icono(s.id) + esc(s.nombre) +
         (contadorNav(s.id) ? '<span class="contador-nav" aria-label="' + contadorNav(s.id) + ' pendientes">' + contadorNav(s.id) + '</span>' : '') + '</a>').join('');
-    const rapidas = rol === 'asesor' ? ['inicio', 'leads', 'erroneos'] : ['inicio', 'leads', 'erroneos', 'equipo'];
+    const rapidas = rol === 'asesor' ? ['inicio', 'leads', 'agenda', 'erroneos'] : ['inicio', 'leads', 'erroneos', 'equipo'];
     suave($('#navInferior')).innerHTML = rapidas.map(id => {
       const s = secciones().find(x => x.id === id);
       return '<a href="#/' + id + '"' + (id === actual ? ' aria-current="page"' : '') + '>' + icono(id) + esc(s.nombre.replace('Mis leads', 'Leads').replace('Leads erróneos', 'Erróneos').replace('Turnos y cupos', 'Equipo')) + '</a>';
@@ -1690,24 +1712,75 @@
   };
 
   // ---------------- AGENDA ----------------
+  // Leads con seguimiento pendiente que ve esta persona (los suyos; la asignadora y la supervisora, los de todos).
+  const seguimientosPendientes = () => leadsVisibles().filter(l => l.proxima && !['cerrado', 'perdido', 'erroneo'].includes(l.estado)).sort((a, b) => a.proxima.ts - b.proxima.ts);
+  const finDeHoy = () => Date.parse(hoyClave() + 'T23:59:59-04:00');
   VISTAS.agenda = function () {
     const ahora = Date.now();
-    const con = leadsVisibles().filter(l => l.proxima && !['cerrado', 'perdido', 'erroneo'].includes(l.estado)).sort((a, b) => a.proxima.ts - b.proxima.ts);
+    const con = seguimientosPendientes();
     const grupos = [
       ['Vencidos', con.filter(l => l.proxima.ts < ahora)],
       ['Hoy', con.filter(l => l.proxima.ts >= ahora && esHoy(l.proxima.ts))],
       ['Próximos días', con.filter(l => l.proxima.ts >= ahora && !esHoy(l.proxima.ts))]
     ];
-    return '<div class="cabeza"><div><h1>Agenda</h1><p class="sub">Los seguimientos que programaste al registrar una gestión. Márcalos como hechos o pásalos a mañana.</p></div></div>' +
-      (con.length ? grupos.filter(g => g[1].length).map(g => '<section class="bloque" style="margin-bottom:16px" aria-label="' + g[0] + '"><header><h2>' + g[0] + '</h2><span class="num muy-tenue">' + g[1].length + '</span></header>' +
-        g[1].map(l => '<div class="doc" style="grid-template-columns:72px minmax(0,1fr) auto">' +
-          '<span class="num" style="font:700 18px Space Grotesk;' + (l.proxima.ts < ahora ? 'color:var(--coral)' : '') + '">' + (esHoy(l.proxima.ts) ? fmtHora(l.proxima.ts) : fmtDia(l.proxima.ts)) + '</span>' +
-          '<span><b>' + esc(l.proxima.accion) + '</b><small>' + esc(codigo(l.origen) + ' a ' + codigo(l.destino)) + ' · ' + esc(l.cliente) + '</small></span>' +
+    const cabeza = '<div class="cabeza"><div><h1>Seguimiento</h1><p class="sub">' + (veTodo() ? 'Los leads que el equipo marcó para volver a escribirles, con la hora.' : 'Los leads que marcaste para volver a escribirles. Cuando llegue la hora te avisamos aquí.') + ' Hora de Caracas.</p></div></div>';
+    if (!haySeguimiento) return cabeza + vacioHtml('El seguimiento todavía no está activado', 'Falta correr en Supabase el SQL 07 (seguimiento). Avísale a tu asignadora.');
+    return cabeza + (con.length ? grupos.filter(g => g[1].length).map(g => '<section class="bloque" style="margin-bottom:16px" aria-label="' + g[0] + '"><header><h2>' + g[0] + '</h2><span class="num muy-tenue">' + g[1].length + '</span></header>' +
+        g[1].map(l => '<div class="doc seguimiento-fila">' +
+          '<span class="num seguimiento-hora' + (l.proxima.ts < ahora ? ' vencido' : '') + '">' + (esHoy(l.proxima.ts) ? fmtHora(l.proxima.ts) : fmtDia(l.proxima.ts) + '<small>' + fmtHora(l.proxima.ts) + '</small>') + '</span>' +
+          '<span><b>' + esc(l.cliente) + '</b><small>' + esc(l.proxima.accion) + ' · ' + esc(codigo(l.origen) + ' a ' + codigo(l.destino)) + (veTodo() ? ' · ' + esc(usuario(l.asesorId).nombre) : '') + '</small></span>' +
           '<span class="acc"><button type="button" class="btn btn-sec btn-chico" data-accion="abrir-lead" data-id="' + l.id + '">Abrir</button>' +
-          '<button type="button" class="btn btn-sec btn-chico" data-accion="posponer" data-id="' + l.id + '">A mañana</button>' +
-          '<button type="button" class="btn btn-chico" data-accion="hecho" data-id="' + l.id + '">Hecho</button></span></div>').join('') + '</section>').join('')
-        : vacioHtml('No tienes seguimientos programados', 'Al registrar una gestión en un lead puedes dejar la próxima acción con fecha y hora.', '<a class="btn" href="#/leads">Ir a mis leads</a>'));
+          (puedeEditar(l) ? '<button type="button" class="btn btn-sec btn-chico" data-accion="posponer" data-id="' + l.id + '">A mañana</button>' +
+          '<button type="button" class="btn btn-chico" data-accion="hecho" data-id="' + l.id + '">Hecho</button>' : '') + '</span></div>').join('') + '</section>').join('')
+        : vacioHtml(veTodo() ? 'Nadie tiene seguimientos programados' : 'No tienes seguimientos programados', 'Abre un lead ya contactado y toca “Programar seguimiento” para elegir el día y la hora.', '<a class="btn" href="#/leads">Ir a ' + (rol === 'asesor' ? 'mis leads' : 'los leads') + '</a>'));
   };
+
+  // ---- Programar, mover y quitar un seguimiento (leads.seguimiento_en / seguimiento_nota) ----
+  async function guardarSeguimiento(l, ts, nota) {
+    const cambios = { seguimiento_en: ts ? new Date(ts).toISOString() : null, seguimiento_nota: ts ? (nota || null) : null };
+    const { data, error } = await sb.from('leads').update(cambios).eq('id', l.id).select('id');
+    if (error) throw error;
+    if (!data || !data.length) throw new Error(rol === 'asignador' ? 'Supabase no dejó guardarlo: falta correr el SQL 07.' : 'Supabase no dejó guardarlo: el lead no es tuyo.');
+    l.proxima = ts ? { ts, accion: nota || 'Hacer seguimiento' } : null;
+    seguimientosAvisados.delete(l.id);
+    recargar();
+  }
+  // La hora se escribe en hora de Caracas, como todo el panel.
+  const partesCaracas = (ts) => { const p = new Intl.DateTimeFormat('en-CA', { timeZone: ZONA, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date(ts));
+    const v = (t) => (p.find(x => x.type === t) || {}).value; return { dia: v('year') + '-' + v('month') + '-' + v('day'), hora: (v('hour') === '24' ? '00' : v('hour')) + ':' + v('minute') }; };
+  function modalSeguimiento(l) {
+    const base = l.proxima ? l.proxima.ts : Math.ceil((Date.now() + 60 * MIN) / (15 * MIN)) * 15 * MIN;
+    const p = partesCaracas(base);
+    abrirModal('<form class="formulario" novalidate><h2 id="modalTitulo">' + (l.proxima ? 'Cambiar el seguimiento' : 'Programar seguimiento') + '</h2>' +
+      '<p>' + esc(l.cliente) + ' · ' + esc(codigo(l.origen) + ' a ' + codigo(l.destino)) + '</p>' +
+      '<div class="dos"><label class="campo"><span>Día</span><input class="entrada" name="dia" type="date" required min="' + hoyClave() + '" value="' + p.dia + '"></label>' +
+      '<label class="campo"><span>Hora (de Caracas)</span><input class="entrada" name="hora" type="time" step="300" required value="' + p.hora + '"></label></div>' +
+      '<label class="campo"><span>Qué vas a hacer (opcional)</span><input class="entrada" name="nota" maxlength="200" autocomplete="off" placeholder="Ej.: mandarle la cotización con equipaje" value="' + esc(l.proxima && l.proxima.accion !== 'Hacer seguimiento' ? l.proxima.accion : '') + '"></label>' +
+      '<p class="ayuda">Te avisamos en el panel cuando llegue la hora. El lead sale en la sección Seguimiento.</p>' +
+      '<p class="error-campo oculto" role="alert"></p>' + botonesModal(l.proxima ? 'Guardar cambios' : 'Programar') + '</form>', async (form) => {
+      const dia = form.dia.value, hora = form.hora.value;
+      if (!/^\d{4}-\d\d-\d\d$/.test(dia)) return marcarError(form, 'dia', 'Elige el día.');
+      if (!/^\d\d:\d\d$/.test(hora)) return marcarError(form, 'hora', 'Elige la hora.');
+      const ts = Date.parse(dia + 'T' + hora + ':00-04:00');
+      if (!ts || ts < Date.now() - MIN) return marcarError(form, 'hora', 'Esa hora ya pasó. Elige una hora que todavía no haya llegado.');
+      if (ts > Date.now() + 180 * DIA) return marcarError(form, 'dia', 'Elige un día dentro de los próximos 6 meses.');
+      await guardarSeguimiento(l, ts, form.nota.value.trim().slice(0, 200));
+      avisar('Seguimiento programado para el ' + (esHoy(ts) ? 'hoy' : fmtDia(ts)) + ' a las ' + fmtHora(ts) + '.');
+    });
+  }
+  // Aviso cuando llega la hora de un seguimiento propio (mientras el panel está abierto).
+  const seguimientosAvisados = new Set();
+  function revisarSeguimientos() {
+    if (!miId || !haySeguimiento) return;
+    const ahora = Date.now();
+    const llegan = datos.leads.filter(l => l.asesorId === miId && l.proxima && l.proxima.ts <= ahora && !['cerrado', 'perdido', 'erroneo'].includes(l.estado) && !seguimientosAvisados.has(l.id));
+    if (!llegan.length) return;
+    llegan.forEach(l => seguimientosAvisados.add(l.id));
+    pitido();
+    avisar(llegan.length === 1 ? 'Toca hacer seguimiento a ' + llegan[0].cliente + ': ' + llegan[0].proxima.accion + '.' : 'Tienes ' + llegan.length + ' seguimientos por hacer. Están en Seguimiento.');
+    try { if (window.Notification && Notification.permission === 'granted') new Notification('Turisto · seguimiento', { body: llegan.map(l => l.cliente).join(', ') }); } catch (e) {}
+    if (seccionActual() !== 'agenda' || !$('#modal').classList.contains('abierto')) pintarNavegacion();
+  }
 
   // ---------------- DOCUMENTOS ----------------
   const filtrosDocs = { tipo: '' };
@@ -1941,75 +2014,8 @@
             '<td class="num"' + (sc ? ' style="color:var(--coral);font-weight:700"' : '') + '>' + sc + '</td><td class="num">' + c.usados + ' de ' + c.limite + '</td>' +
             (rol === 'asignador' ? '<td>' + (enEste ? '<button type="button" class="btn btn-sec btn-chico" data-accion="sacar-turno" data-id="' + a.id + '">Sacar del turno</button>' : '') + '</td>' : '') + '</tr>';
         }).join('') + '</tbody></table></div>'
-        : vacioHtml('Nadie registrado en el turno ' + filtrosEquipo.turno + ' hoy', 'Los asesores se registran desde su Inicio.')) +
-      equidadHtml(filtrosEquipo.turno);
+        : vacioHtml('Nadie registrado en el turno ' + filtrosEquipo.turno + ' hoy', 'Los asesores se registran desde su Inicio.'));
   };
-
-  // ---------------- EQUIDAD DEL REPARTO ----------------
-  // Repite el reparto de hoy lead por lead (en orden de asignación) y, en cada uno, mira si había alguien
-  // registrado en ese turno y ruta que llevaba MENOS leads que quien lo recibió. Eso es un "salto".
-  // Se cuenta por ruta, como lo cuenta cada hoja. Los leads de China van a su propio grupo y no cuentan como salto.
-  const esLeadChina = (l) => /china|cant[oó]n|guangzhou|shangh[aá]i|pek[ií]n|beijing|shenzhen|yiw/i.test((l.destino || '') + ' ' + (l.textoCliente || ''));
-  const turnoDeHora = (ts) => { const p = new Intl.DateTimeFormat('en-GB', { timeZone: ZONA, hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date(ts));
-    const m = (Number((p.find(x => x.type === 'hour') || {}).value) % 24) * 60 + Number((p.find(x => x.type === 'minute') || {}).value); return m < 17 * 60 + 30 ? 'AM' : 'PM'; };
-  function auditarEquidad(ruta, turno) {
-    const o = ordenHoja[ruta] || {};
-    const cupo = o.cupo || 10;
-    const sinCupo = o.sinCupo || [];
-    const registrados = datos.usuarios.map(u => {
-      const reg = u.registros.find(x => x.ruta === ruta && x.turno === turno);
-      return reg ? { u, desde: reg.creado_en ? Date.parse(reg.creado_en) : 0 } : null;
-    }).filter(Boolean);
-    const leads = datos.leads.filter(l => l.ruta === ruta && esHoy(l.asignado) && l.asesorId).sort((a, b) => a.asignado - b.asignado);
-    const cuenta = {}, saltos = {}, ultimoSalto = {}, enTurno = {};
-    let china = 0;
-    for (const l of leads) {
-      const delTurno = turnoDeHora(l.asignado) === turno;
-      if (delTurno && esLeadChina(l)) { china++; }
-      else if (delTurno) {
-        const recibe = cuenta[l.asesorId] || 0;
-        registrados.forEach(r => {
-          if (r.u.id === l.asesorId || r.desde > l.asignado) return;
-          if (sinCupo.includes(normNombre(r.u.nombre))) return;
-          const lleva = cuenta[r.u.id] || 0;
-          if (lleva < recibe && lleva < cupo) { saltos[r.u.id] = (saltos[r.u.id] || 0) + 1; ultimoSalto[r.u.id] = l.asignado; }
-        });
-      }
-      cuenta[l.asesorId] = (cuenta[l.asesorId] || 0) + 1;
-      if (delTurno) enTurno[l.asesorId] = (enTurno[l.asesorId] || 0) + 1;
-    }
-    const filas = registrados.map(r => ({ u: r.u, desde: r.desde, hoy: cuenta[r.u.id] || 0, turno: enTurno[r.u.id] || 0, saltos: saltos[r.u.id] || 0, ultimo: ultimoSalto[r.u.id] || null,
-      lleno: sinCupo.includes(normNombre(r.u.nombre)) }))
-      .sort((a, b) => a.hoy - b.hoy || a.desde - b.desde);
-    // Diferencia entre quien más y quien menos lleva hoy (sin contar a quien ya completó su cupo)
-    const activos = filas.filter(f => !f.lleno);
-    const dif = activos.length ? Math.max(...activos.map(f => f.hoy)) - Math.min(...activos.map(f => f.hoy)) : 0;
-    // Recibieron leads sin estar registrados en este turno (asignación a mano, China u otra hoja)
-    const fuera = Object.keys(enTurno).filter(id => !registrados.some(r => r.u.id === id)).map(id => ({ u: usuario(id), n: enTurno[id] }));
-    return { filas, dif, fuera, china, totalSaltos: Object.values(saltos).reduce((s, x) => s + x, 0) };
-  }
-  function equidadHtml(turno) {
-    if (!veTodo()) return '';
-    const rutas = rutaFiltro === 'TODAS' ? Object.keys(RUTAS) : [rutaFiltro];
-    const bloques = rutas.map(r => {
-      const a = auditarEquidad(r, turno);
-      if (!a.filas.length) return '';
-      const nivel = a.totalSaltos === 0 && a.dif <= 1 ? ['ok', 'Parejo'] : a.dif <= 2 && a.totalSaltos <= 2 ? ['duda', 'Revisar'] : ['mal', 'Desparejo'];
-      return '<section class="bloque equidad" aria-labelledby="eq-' + r + '" style="margin-top:18px"><header><h2 id="eq-' + r + '">Equidad del reparto · ' + esc(RUTAS[r]) + ' · turno ' + turno + '</h2>' +
-        '<span class="sello-eq ' + nivel[0] + '">' + nivel[1] + '</span></header>' +
-        '<p class="bloque-desc">Diferencia de leads hoy entre quien más y quien menos lleva: <b class="num">' + a.dif + '</b>. ' +
-        (a.totalSaltos ? '<b>' + a.totalSaltos + (a.totalSaltos === 1 ? ' salto' : ' saltos') + '</b>: un lead se le dio a alguien que ya llevaba más que otro registrado.' : 'Ningún salto: cada lead fue a quien menos llevaba.') + '</p>' +
-        '<div class="tabla-marco"><table><caption class="sr">Equidad del reparto de ' + esc(RUTAS[r]) + '</caption><thead><tr><th>Asesor</th><th>Registrado</th><th class="num">Leads del turno</th><th class="num">Leads hoy</th><th class="num">Saltado</th></tr></thead><tbody>' +
-        a.filas.map(f => '<tr><td>' + esc(f.u.nombre) + (f.lleno ? ' <span class="etiqueta-estado ret">Cupo completo</span>' : '') + '</td>' +
-          '<td>' + (f.desde ? fmtHora(f.desde) : '—') + '</td><td class="num">' + f.turno + '</td><td class="num">' + f.hoy + '</td>' +
-          '<td class="num"' + (f.saltos ? ' style="color:var(--coral);font-weight:700"' : '') + '>' + (f.saltos ? f.saltos + (f.ultimo ? ' <span class="muy-tenue" style="font-weight:400">(último ' + fmtHora(f.ultimo) + ')</span>' : '') : '0') + '</td></tr>').join('') +
-        '</tbody></table></div>' +
-        (a.fuera.length ? '<p class="ayuda" style="margin-top:10px">Recibieron leads sin estar registrados en este turno: ' + esc(a.fuera.map(x => x.u.nombre + ' (' + x.n + ')').join(', ')) + '. Suele ser una asignación a mano o el grupo de China.</p>' : '') +
-        (a.china ? '<p class="ayuda" style="margin-top:6px">' + a.china + (a.china === 1 ? ' lead de China fue' : ' leads de China fueron') + ' a su grupo y no se cuentan como salto.</p>' : '') +
-        '<p class="ayuda" style="margin-top:6px">Se calcula con los leads del panel. Un salto puede ser normal si esa persona completó su cupo en la hoja o se registró tarde.</p></section>';
-    }).join('');
-    return bloques;
-  }
 
   // ---------------- ESTADÍSTICAS ----------------
   // Hoy y 7 días salen de los leads ya cargados; lo demás se pide aparte (ver PERIODOS).
@@ -2124,9 +2130,11 @@
       ((l.origen || l.destino) ? fila('Ruta', esc((l.origen || '¿?') + ' a ' + (l.destino || '¿?'))) : '') +
       fila('Asesor', esc(usuario(l.asesorId).nombre)) + fila('Asignado', (esHoy(l.asignado) ? 'hoy ' : fmtDia(l.asignado) + ' ') + fmtHora(l.asignado) + ' <span class="muy-tenue">(' + hace(l.asignado) + ')</span>') +
       fila('Primer contacto', l.contactadoEn ? fmtHora(l.contactadoEn) + ' <span class="muy-tenue">(' + Math.max(0, Math.round((l.contactadoEn - l.asignado) / MIN)) + ' min después)</span>' : '<span style="color:var(--coral)">Todavía no</span>') +
+      (l.proxima ? fila('Seguimiento', '<span' + (l.proxima.ts < Date.now() ? ' style="color:var(--coral)"' : '') + '>' + (esHoy(l.proxima.ts) ? 'hoy ' : fmtDia(l.proxima.ts) + ' ') + fmtHora(l.proxima.ts) + '</span> · ' + esc(l.proxima.accion) +
+        (puedeEditar(l) ? ' <button type="button" class="btn btn-sec btn-chico" data-accion="hecho" data-id="' + l.id + '">Hecho</button>' : '')) : '') +
       fila('Comprobante de contacto', l.comprobante ? 'Subido · <button type="button" class="btn btn-sec btn-chico" data-accion="ver-comprobante">Ver</button>' : '<span class="muy-tenue">Sin subir</span>') +
-      (esMio && !l.comprobante && !['erroneo', 'perdido'].includes(l.estado)
-        ? '<div class="zona-archivos" id="zonaArchivos" style="margin-top:16px"><p><b>Sube la captura del primer contacto</b></p><p class="ayuda" style="margin:4px 0 10px">Arrastra la imagen aquí o elígela. Con eso el lead queda como contactado y cuenta tu tiempo de respuesta.</p>' +
+      ((esMio || rol === 'asignador') && !l.comprobante && !['erroneo', 'perdido'].includes(l.estado)
+        ? '<div class="zona-archivos" id="zonaArchivos" style="margin-top:16px"><p><b>' + (esMio ? 'Sube la captura del primer contacto' : 'Sube la captura del primer contacto de ' + esc(usuario(l.asesorId).nombre)) + '</b></p><p class="ayuda" style="margin:4px 0 10px">Arrastra la imagen aquí o elígela. Con eso el lead queda como contactado y cuenta tu tiempo de respuesta.</p>' +
           '<button type="button" class="btn btn-sec btn-chico" data-accion="elegir-archivos">Elegir captura</button></div>' : '') +
       '<details style="margin-top:16px"><summary class="tenue" style="cursor:pointer;font-size:14px">Lo que llenó el cliente</summary><p style="white-space:pre-wrap;font-size:14px;margin-top:8px">' + esc(l.textoCliente) + '</p></details>';
 
@@ -2148,6 +2156,7 @@
           '<button type="button" class="btn btn-sec btn-chico" data-accion="copiar-tel">Copiar número</button>' : '') + '</div>' + pasos + '</div>' +
       '<div class="cajon-cuerpo" id="cajonCuerpo">' + cuerpo + '</div>' +
       '<div class="cajon-pie">' + (esMio && !['cerrado', 'perdido', 'erroneo'].includes(l.estado) ? '<button type="button" class="btn btn-lima" data-accion="abrir-asistente" data-id="' + l.id + '">Pedir ayuda al asistente</button>' : '') +
+      (editable && haySeguimiento && !['cerrado', 'perdido', 'erroneo'].includes(l.estado) ? '<button type="button" class="btn btn-sec" data-accion="seguimiento">' + (l.proxima ? 'Cambiar seguimiento' : 'Programar seguimiento') + '</button>' : '') +
       (editable && !['cerrado', 'perdido'].includes(l.estado) ? '<button type="button" class="btn btn-sec" data-accion="perdido">Marcar como perdido</button>' : '') +
       (puedeReportarLE ? '<button type="button" class="btn btn-peligro" data-accion="reportar-le"' + (c.quedan === 0 ? ' disabled title="Ya usaste todos tus reportes de hoy"' : '') + '>Reportar como erróneo (' + c.quedan + ' disponibles)</button>' : '') +
       (rol === 'asignador' ? '<button type="button" class="btn btn-peligro" data-accion="borrar-lead">Eliminar el lead</button>' : '') +
@@ -2176,7 +2185,7 @@
       if (dato.length > COMPROBANTE_MAX * 1.37) throw new Error('La imagen sigue siendo muy pesada. Haz una captura más pequeña.');
       const { data, error } = await sb.from('leads').update({ foto_contacto_url: dato, contactado_en: new Date().toISOString(), estado: 'contactado' }).eq('id', l.id).select('id');
       if (error) throw error;
-      if (!data || !data.length) throw new Error('Supabase no dejó guardarlo: el lead no es tuyo o ya no es de hoy.');
+      if (!data || !data.length) throw new Error(rol === 'asignador' ? 'Supabase no dejó guardarlo: falta correr el SQL 07 (permiso de la asignadora en todos los leads).' : 'Supabase no dejó guardarlo: el lead no es tuyo.');
       l.comprobante = true; l.contactadoEn = Date.now(); l.estado = 'contactado';
       avisar('Comprobante subido: el lead quedó como contactado.');
       repintar(); recargar();
@@ -2416,12 +2425,12 @@
     const t = sinAcentos(texto);
     if (/cuantos|me quedan|limite|cupo de report/.test(t)) return { tipo: 'cupo' };
     if (/no existe|no tiene whats|numero (malo|equivocado|invalido|errado)|no entra|fuera de servicio|no sale la llamada|no le llega|mal escrito/.test(t)) return { tipo: 'erroneo', motivo: 'numero_invalido' };
-    if (/no (pidio|solicito|lleno|dejo sus datos)|nunca pidio|no sabe (de|por) que|no se registro/.test(t)) return { tipo: 'erroneo', motivo: 'no_solicito' };
+    if (/no (pidio|solicito|lleno|dejo sus datos)|nunca pidio|no sabe (de|por) que|no se registro|no (le|me) interesa|ya no (quiere|quiero)|no quiere (nada|que (le|lo|la) escriban)/.test(t)) return { tipo: 'erroneo', motivo: 'no_solicito' };
     if (/repetid|duplicad|ya (era|es) cliente|ya lo (tengo|atendi)|mismo cliente|ya me lo (dieron|asignaron)/.test(t)) return { tipo: 'erroneo', motivo: 'duplicado' };
     if (/otra ruta|otro pais|es de (venezuela|argentina|espana|colombia)|no es de (esta|mi) ruta/.test(t)) return { tipo: 'erroneo', motivo: 'otra_ruta' };
     if (/falso|de prueba|broma|inventad|datos raros/.test(t)) return { tipo: 'erroneo', motivo: 'datos_falsos' };
     if (/no (me )?contesta|no responde|no atiende|me deja en visto|en visto|no me escribe|no lee/.test(t)) return { tipo: 'no_contesta' };
-    if (/ya compro|otra agencia|no le interesa|muy caro|cambio de planes|ya no viaja/.test(t)) return { tipo: 'perdido', motivo: /otra agencia|ya compro/.test(t) ? 'Ya compró con otra agencia' : /caro/.test(t) ? 'El precio no le sirvió' : /planes|no viaja/.test(t) ? 'Cambió de planes' : 'Otro' };
+    if (/ya compro|otra agencia|muy caro|cambio de planes|ya no viaja/.test(t)) return { tipo: 'perdido', motivo: /otra agencia|ya compro/.test(t) ? 'Ya compró con otra agencia' : /caro/.test(t) ? 'El precio no le sirvió' : /planes|no viaja/.test(t) ? 'Cambió de planes' : 'Otro' };
     return { tipo: 'desconocido' };
   }
   function misLeadsAbiertos() {
@@ -2906,6 +2915,21 @@
         break;
       }
       case 'perdido': if (l) modalPerdido(l); break;
+      case 'seguimiento': {
+        if (!l || !puedeEditar(l)) break;
+        if (faltaComprobante(l)) { pedirComprobante(); break; }   // primero el contacto, después el seguimiento
+        modalSeguimiento(l); break;
+      }
+      case 'hecho': case 'posponer': {
+        const s = leadPorId(b.dataset.id) || l; if (!s || !s.proxima || !puedeEditar(s)) break;
+        // A mañana: misma hora, el próximo día que todavía no haya pasado.
+        let nuevo = null;
+        if (acc === 'posponer') { nuevo = s.proxima.ts + DIA; while (nuevo <= Date.now()) nuevo += DIA; }
+        b.disabled = true;
+        guardarSeguimiento(s, nuevo, nuevo ? s.proxima.accion : '').then(() => { avisar(nuevo ? 'Seguimiento pasado a mañana a las ' + fmtHora(nuevo) + '.' : 'Seguimiento hecho.'); repintar(); },
+          (er) => { avisar('No se pudo guardar: ' + mensajeError(er), 'err'); b.disabled = false; });
+        break;
+      }
       case 'reportar-le': if (l) modalErroneo(l); break;
       case 'borrar-lead': {
         if (!l || rol !== 'asignador') break;
@@ -3293,6 +3317,7 @@
         conectarTiempoReal();
         consultarMiCupo(); consultarPausa(); consultarOrdenHoja();
         temporizadores.push(setInterval(() => recargar(0), 60000));
+        temporizadores.push(setInterval(revisarSeguimientos, 30000)); setTimeout(revisarSeguimientos, 3000);
         temporizadores.push(setInterval(consultarMiCupo, 120000));
         temporizadores.push(setInterval(consultarPausa, 120000));
         temporizadores.push(setInterval(consultarOrdenHoja, 120000));
