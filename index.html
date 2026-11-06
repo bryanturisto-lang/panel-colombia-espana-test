@@ -434,6 +434,10 @@
   .etiqueta-estado { font-size: 11.5px; font-weight: 600; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; }
   .etiqueta-estado.bloq { color: var(--coral); }
   .etiqueta-estado.ret { color: var(--niebla-3); }
+  .sello-eq { margin-left: auto; font-size: 12.5px; font-weight: 700; padding: 3px 12px; border-radius: 999px; }
+  .sello-eq.ok { background: color-mix(in srgb, var(--menta) 14%, #fff); color: var(--menta); }
+  .sello-eq.duda { background: color-mix(in srgb, var(--ambar) 16%, #fff); color: var(--ambar); }
+  .sello-eq.mal { background: color-mix(in srgb, var(--coral) 12%, #fff); color: var(--coral); }
   .etiqueta-estado.rol { color: var(--violeta); background: var(--lavanda); border-color: transparent; }
   .acciones-asesor { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-left: auto; }
   select.entrada.mini { width: auto; padding: 6px 28px 6px 10px; font-size: 13px; }
@@ -1136,7 +1140,7 @@
           const t = turnoActual(r) || (resp.turno === 'PM' ? 'PM' : 'AM');
           const lista = (t === 'PM' ? resp.asesoresPM : resp.asesoresAM).map(x => typeof x === 'string' ? x : (x && x.nombre)).filter(Boolean).map(x => String(x).trim());
           const sinCupo = (Array.isArray(resp.inhabilitadosEnEstaRuta) ? resp.inhabilitadosEnEstaRuta : []).map(x => normNombre(x && typeof x === 'object' ? x.nombre : x)).filter(Boolean);
-          ordenHoja[r] = { nombres: lista, turno: t, turnoHoja: resp.turno || null, fecha: resp.fecha || null, sinCupo };
+          ordenHoja[r] = { nombres: lista, turno: t, turnoHoja: resp.turno || null, fecha: resp.fecha || null, sinCupo, cupo: Number(resp.cupoPorPestana) || null };
         } catch (e) { ordenHoja[r] = { error: true }; }
       }));
     } finally { consultandoOrden = false; }
@@ -1917,8 +1921,75 @@
             '<td class="num"' + (sc ? ' style="color:var(--coral);font-weight:700"' : '') + '>' + sc + '</td><td class="num">' + c.usados + ' de ' + c.limite + '</td>' +
             (rol === 'asignador' ? '<td>' + (enEste ? '<button type="button" class="btn btn-sec btn-chico" data-accion="sacar-turno" data-id="' + a.id + '">Sacar del turno</button>' : '') + '</td>' : '') + '</tr>';
         }).join('') + '</tbody></table></div>'
-        : vacioHtml('Nadie registrado en el turno ' + filtrosEquipo.turno + ' hoy', 'Los asesores se registran desde su Inicio.'));
+        : vacioHtml('Nadie registrado en el turno ' + filtrosEquipo.turno + ' hoy', 'Los asesores se registran desde su Inicio.')) +
+      equidadHtml(filtrosEquipo.turno);
   };
+
+  // ---------------- EQUIDAD DEL REPARTO ----------------
+  // Repite el reparto de hoy lead por lead (en orden de asignación) y, en cada uno, mira si había alguien
+  // registrado en ese turno y ruta que llevaba MENOS leads que quien lo recibió. Eso es un "salto".
+  // Se cuenta por ruta, como lo cuenta cada hoja. Los leads de China van a su propio grupo y no cuentan como salto.
+  const esLeadChina = (l) => /china|cant[oó]n|guangzhou|shangh[aá]i|pek[ií]n|beijing|shenzhen|yiw/i.test((l.destino || '') + ' ' + (l.textoCliente || ''));
+  const turnoDeHora = (ts) => { const p = new Intl.DateTimeFormat('en-GB', { timeZone: ZONA, hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date(ts));
+    const m = (Number((p.find(x => x.type === 'hour') || {}).value) % 24) * 60 + Number((p.find(x => x.type === 'minute') || {}).value); return m < 17 * 60 + 30 ? 'AM' : 'PM'; };
+  function auditarEquidad(ruta, turno) {
+    const o = ordenHoja[ruta] || {};
+    const cupo = o.cupo || 10;
+    const sinCupo = o.sinCupo || [];
+    const registrados = datos.usuarios.map(u => {
+      const reg = u.registros.find(x => x.ruta === ruta && x.turno === turno);
+      return reg ? { u, desde: reg.creado_en ? Date.parse(reg.creado_en) : 0 } : null;
+    }).filter(Boolean);
+    const leads = datos.leads.filter(l => l.ruta === ruta && esHoy(l.asignado) && l.asesorId).sort((a, b) => a.asignado - b.asignado);
+    const cuenta = {}, saltos = {}, ultimoSalto = {}, enTurno = {};
+    let china = 0;
+    for (const l of leads) {
+      const delTurno = turnoDeHora(l.asignado) === turno;
+      if (delTurno && esLeadChina(l)) { china++; }
+      else if (delTurno) {
+        const recibe = cuenta[l.asesorId] || 0;
+        registrados.forEach(r => {
+          if (r.u.id === l.asesorId || r.desde > l.asignado) return;
+          if (sinCupo.includes(normNombre(r.u.nombre))) return;
+          const lleva = cuenta[r.u.id] || 0;
+          if (lleva < recibe && lleva < cupo) { saltos[r.u.id] = (saltos[r.u.id] || 0) + 1; ultimoSalto[r.u.id] = l.asignado; }
+        });
+      }
+      cuenta[l.asesorId] = (cuenta[l.asesorId] || 0) + 1;
+      if (delTurno) enTurno[l.asesorId] = (enTurno[l.asesorId] || 0) + 1;
+    }
+    const filas = registrados.map(r => ({ u: r.u, desde: r.desde, hoy: cuenta[r.u.id] || 0, turno: enTurno[r.u.id] || 0, saltos: saltos[r.u.id] || 0, ultimo: ultimoSalto[r.u.id] || null,
+      lleno: sinCupo.includes(normNombre(r.u.nombre)) }))
+      .sort((a, b) => a.hoy - b.hoy || a.desde - b.desde);
+    // Diferencia entre quien más y quien menos lleva hoy (sin contar a quien ya completó su cupo)
+    const activos = filas.filter(f => !f.lleno);
+    const dif = activos.length ? Math.max(...activos.map(f => f.hoy)) - Math.min(...activos.map(f => f.hoy)) : 0;
+    // Recibieron leads sin estar registrados en este turno (asignación a mano, China u otra hoja)
+    const fuera = Object.keys(enTurno).filter(id => !registrados.some(r => r.u.id === id)).map(id => ({ u: usuario(id), n: enTurno[id] }));
+    return { filas, dif, fuera, china, totalSaltos: Object.values(saltos).reduce((s, x) => s + x, 0) };
+  }
+  function equidadHtml(turno) {
+    if (!veTodo()) return '';
+    const rutas = rutaFiltro === 'TODAS' ? Object.keys(RUTAS) : [rutaFiltro];
+    const bloques = rutas.map(r => {
+      const a = auditarEquidad(r, turno);
+      if (!a.filas.length) return '';
+      const nivel = a.totalSaltos === 0 && a.dif <= 1 ? ['ok', 'Parejo'] : a.dif <= 2 && a.totalSaltos <= 2 ? ['duda', 'Revisar'] : ['mal', 'Desparejo'];
+      return '<section class="bloque equidad" aria-labelledby="eq-' + r + '" style="margin-top:18px"><header><h2 id="eq-' + r + '">Equidad del reparto · ' + esc(RUTAS[r]) + ' · turno ' + turno + '</h2>' +
+        '<span class="sello-eq ' + nivel[0] + '">' + nivel[1] + '</span></header>' +
+        '<p class="bloque-desc">Diferencia de leads hoy entre quien más y quien menos lleva: <b class="num">' + a.dif + '</b>. ' +
+        (a.totalSaltos ? '<b>' + a.totalSaltos + (a.totalSaltos === 1 ? ' salto' : ' saltos') + '</b>: un lead se le dio a alguien que ya llevaba más que otro registrado.' : 'Ningún salto: cada lead fue a quien menos llevaba.') + '</p>' +
+        '<div class="tabla-marco"><table><caption class="sr">Equidad del reparto de ' + esc(RUTAS[r]) + '</caption><thead><tr><th>Asesor</th><th>Registrado</th><th class="num">Leads del turno</th><th class="num">Leads hoy</th><th class="num">Saltado</th></tr></thead><tbody>' +
+        a.filas.map(f => '<tr><td>' + esc(f.u.nombre) + (f.lleno ? ' <span class="etiqueta-estado ret">Cupo completo</span>' : '') + '</td>' +
+          '<td>' + (f.desde ? fmtHora(f.desde) : '—') + '</td><td class="num">' + f.turno + '</td><td class="num">' + f.hoy + '</td>' +
+          '<td class="num"' + (f.saltos ? ' style="color:var(--coral);font-weight:700"' : '') + '>' + (f.saltos ? f.saltos + (f.ultimo ? ' <span class="muy-tenue" style="font-weight:400">(último ' + fmtHora(f.ultimo) + ')</span>' : '') : '0') + '</td></tr>').join('') +
+        '</tbody></table></div>' +
+        (a.fuera.length ? '<p class="ayuda" style="margin-top:10px">Recibieron leads sin estar registrados en este turno: ' + esc(a.fuera.map(x => x.u.nombre + ' (' + x.n + ')').join(', ')) + '. Suele ser una asignación a mano o el grupo de China.</p>' : '') +
+        (a.china ? '<p class="ayuda" style="margin-top:6px">' + a.china + (a.china === 1 ? ' lead de China fue' : ' leads de China fueron') + ' a su grupo y no se cuentan como salto.</p>' : '') +
+        '<p class="ayuda" style="margin-top:6px">Se calcula con los leads del panel. Un salto puede ser normal si esa persona completó su cupo en la hoja o se registró tarde.</p></section>';
+    }).join('');
+    return bloques;
+  }
 
   // ---------------- ESTADÍSTICAS ----------------
   // Hoy y 7 días salen de los leads ya cargados; lo demás se pide aparte (ver PERIODOS).
