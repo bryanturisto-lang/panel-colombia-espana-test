@@ -176,6 +176,7 @@
       <span class="dato">Turno <b>PM</b> 18:00 a 23:00</span>
       <span class="dato">Hora de <b>Caracas</b></span>
       <span class="dato">Contacta antes de <b>15 min</b></span>
+      <span class="dato">A los <b>20 min</b> sin captura se reasigna</span>
     </div>
   </section>
 
@@ -233,7 +234,7 @@
       <p class="resumen">En Inicio tienes la tarjeta “Tu turno” con todo lo que importa del reparto.</p>
       <ol class="pasos-lista">
         <li><span class="chip verde">● Estás en la lista de reparto</span>: estás recibiendo leads.</li>
-        <li><b>Tu puesto</b>: el lugar que ocupas en la fila de cada ruta. El reparto es parejo y va en ese orden.</li>
+        <li><b>Tu puesto</b>: el lugar que ocupas en la fila de cada ruta. El reparto es <b>parejo</b>: cada lead va a quien <b>menos leads lleva hoy</b>; si hay empate, al siguiente de la fila. Si te registras tarde, te llegan seguidos hasta igualarte con los demás.</li>
         <li><b>Leads hoy</b>: cuántos llevas de tu cupo del día en cada ruta. En España puede salir el detalle de Miami.</li>
         <li><span class="chip">Salir del turno</span>: úsalo si terminas antes. Los leads que ya tienes no cambian.</li>
       </ol>
@@ -254,6 +255,7 @@
         <li>Toca la tarjeta para abrir el lead.</li>
       </ol>
       <div class="regla"><b>La meta</b>Contactar cada lead antes de 15 minutos. Ese tiempo se mide desde que te llega hasta que subes el comprobante del primer contacto.</div>
+      <div class="ojo"><b>Regla de los 20 minutos</b>A los <b>15 minutos</b> sin la captura del primer contacto te llega un aviso por WhatsApp. A los <b>20 minutos</b> sin captura, el lead <b>pasa automáticamente a otro asesor</b> y desaparece de tu panel. Ese lead <b>sigue contando en tu cupo del día</b>, así que súbela siempre a tiempo.</div>
     </div>
     <figure><button type="button" class="boton-zoom" aria-label="Ver en grande: lista Atiende ahora"><div class="telefono"><img src="guia/04-atiende-ahora.jpg" alt="Lista Atiende ahora con dos leads: Bogotá a Madrid sin contactar 25 minutos y Medellín a Barcelona nuevo" loading="lazy" width="405" height="831"></div></button><figcaption>Primero el más urgente</figcaption></figure>
   </section>
@@ -292,6 +294,7 @@
         <li>En el lead, en “Sube la captura del primer contacto”, pulsa <span class="chip">Elegir captura</span> (en computadora también puedes arrastrarla).</li>
         <li>Listo: el lead pasa a <b>Contactado</b> y queda guardada la hora de tu primer contacto.</li>
       </ol>
+      <div class="regla"><b>No lo dejes para después</b>Sube la captura apenas contactes al cliente: si pasan 20 minutos sin ella, el lead se reasigna a otro asesor.</div>
       <div class="ojo"><b>Importante</b>Si el lead no sirve (número que no existe, repetido…), repórtalo como erróneo <b>antes</b> de subir el comprobante. Un lead contactado ya no se puede reportar.</div>
     </div>
     <figure><button type="button" class="boton-zoom" aria-label="Ver en grande: subir el comprobante de contacto"><div class="telefono"><img src="guia/06-comprobante.jpg" alt="Zona para subir la captura del primer contacto con el botón Elegir captura" loading="lazy" width="405" height="831"></div></button><figcaption>La captura del primer contacto</figcaption></figure>
@@ -374,6 +377,8 @@
     <details><summary>La IA no aprobó mi reporte y yo creo que sí es erróneo</summary><p>Lee lo que te dice: casi siempre falta que se vea el número o el nombre del cliente, o la prueba no es clara. Cambia la captura por una mejor y se revisa otra vez. Si aun así no pasa, habla con tu líder.</p></details>
     <details><summary>¿Puedo reportar un lead que ya contacté?</summary><p>No. Por eso, si ves que el lead no sirve, repórtalo antes de subir el comprobante de contacto.</p></details>
     <details><summary>El cliente quiere viajar en un año, ¿qué hago?</summary><p>Si el viaje es dentro de más de 7 meses todavía no se puede cotizar: repórtalo como erróneo (motivo “Otro”) y explícalo en una frase. Si es dentro de los próximos 7 meses, atiéndelo normal.</p></details>
+    <details><summary>¿Por qué el lead le llegó a otro y no a mí?</summary><p>El reparto le da cada lead a quien menos leads lleva hoy en esa ruta. Si tú llevas más que otro registrado, le toca a él. En empate va al siguiente de la fila. Así al final del día todos quedan parejos.</p></details>
+    <details><summary>Me quitaron un lead, ¿por qué?</summary><p>Pasaron 20 minutos sin que subieras la captura del primer contacto, así que el sistema se lo dio a otro asesor (te avisa por WhatsApp a los 15 y a los 20 minutos). Ese lead sigue contando en tu cupo del día. Sube la captura apenas contactes al cliente.</p></details>
     <details><summary>¿Tengo que recargar la página?</summary><p>No. El panel se actualiza solo: los leads nuevos, los cambios de turno y las respuestas de la IA aparecen sin recargar.</p></details>
   </div>
 
@@ -390,7 +395,10 @@
         <li><b>Nombrar líderes</b>: botón <span class="chip">Hacer asignador</span> en la fila de la persona. Tiene que cerrar sesión y volver a entrar.</li>
         <li><b>Pausar el reparto</b>: en Inicio, “Reparto automático”. La pausa automática del mediodía termina sola; “Reanudar” la salta solo por hoy.</li>
         <li><b>Leads erróneos</b>: en la bandeja, <span class="chip lima">Que la IA decida</span> aprueba o anula cada reporte (uno o todos). Si la IA se equivoca al aprobar, usa “Anular de todas formas”.</li>
+        <li><b>Equidad del reparto</b>: en <b>Turnos y cupos</b>, debajo de la tabla, cada ruta muestra “Parejo”, “Revisar” o “Desparejo”, cuántos leads lleva cada asesor, desde qué hora está registrado y cuántas veces lo <b>saltaron</b>. Revísalo durante el día.</li>
+        <li><b>Reasignaciones</b>: los leads que se movieron por no subir la captura en 20 minutos quedan en la pestaña <b>Reasignaciones</b> de la hoja de cada ruta.</li>
         <li><b>Estadísticas</b>: contactados, tiempo al primer contacto, ventas y erróneos por asesor, por periodo.</li>
+        <li><b>No asignes a mano en la hoja</b>: se salta el reparto parejo. Si hace falta, usa <span class="chip">Asignar un lead a mano</span> del panel.</li>
       </ol>
     </div>
   </section>
