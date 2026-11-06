@@ -8,6 +8,9 @@
 <meta name="theme-color" content="#4C45A4">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script>
+  try { var d = localStorage.getItem('turisto-guia-disp'); document.documentElement.setAttribute('data-disp', d === 'laptop' || d === 'telefono' ? d : (window.innerWidth >= 900 ? 'laptop' : 'telefono')); } catch (e) { document.documentElement.setAttribute('data-disp', window.innerWidth >= 900 ? 'laptop' : 'telefono'); }
+</script>
 <style>
   :root {
     color-scheme: light;
@@ -93,6 +96,22 @@
   .chip.rojo { background: color-mix(in srgb, var(--coral) 12%, #fff); color: var(--coral); }
   .chip.verde { background: color-mix(in srgb, var(--menta) 12%, #fff); color: var(--menta); }
 
+  /* Interruptor Teléfono / Laptop */
+  .disp { display: inline-flex; gap: 2px; padding: 3px; margin: 0 0 6px; border-radius: 999px; background: var(--lavanda); }
+  .disp button { border: 0; background: transparent; color: var(--texto-2); font: 600 14px 'Inter', sans-serif; padding: 7px 14px; border-radius: 999px; cursor: pointer; min-height: 36px; transition: background .18s, color .18s; }
+  .disp button[aria-pressed="true"] { background: var(--violeta); color: #fff; box-shadow: 0 6px 14px -8px rgba(76, 69, 164, .9); }
+  html[data-disp="telefono"] .solo-lap, html[data-disp="laptop"] .solo-tel { display: none !important; }
+  html:not([data-disp]) .solo-lap { display: none !important; }
+
+  /* Laptop con la captura */
+  .laptop { width: 100%; max-width: 820px; margin: 0 auto; }
+  .laptop .pantalla { padding: 10px 10px 12px; border-radius: 16px 16px 4px 4px; background: #1E1A3D; box-shadow: 0 30px 60px -30px rgba(40, 30, 100, .6); }
+  .laptop .pantalla img { display: block; width: 100%; height: auto; border-radius: 6px; background: #fff; }
+  .laptop .base { height: 14px; margin: 0 -4%; border-radius: 0 0 14px 14px; background: linear-gradient(#D9D5EE, #BDB7DE); box-shadow: 0 10px 18px -12px rgba(40, 30, 100, .5); }
+  .laptop .base::before { content: ""; display: block; width: 18%; height: 5px; margin: 0 auto; border-radius: 0 0 6px 6px; background: #A9A2D2; }
+  html[data-disp="laptop"] .paso { grid-template-columns: 1fr; }
+  html[data-disp="laptop"] .paso figure { max-width: 860px; width: 100%; margin: 0 auto; }
+
   /* Teléfono con la captura */
   figure { margin: 0; }
   .telefono { position: relative; width: 100%; max-width: 300px; margin: 0 auto; padding: 10px; border-radius: 34px; background: #1E1A3D; box-shadow: 0 30px 60px -30px rgba(40, 30, 100, .6); transition: transform .3s; }
@@ -128,6 +147,7 @@
   /* Visor de captura */
   .visor { position: fixed; inset: 0; z-index: 60; display: none; place-items: center; padding: 20px; background: rgba(46, 38, 110, .55); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
   .visor.abierto { display: grid; }
+  .visor.ancho img { max-width: min(1200px, 100%); border-radius: 10px; }
   .visor img { max-width: min(420px, 100%); max-height: calc(100vh - 80px); border-radius: 26px; box-shadow: 0 30px 60px -20px rgba(0, 0, 0, .5); background: #fff; }
   .visor button { position: absolute; top: 16px; right: 16px; width: 44px; height: 44px; border-radius: 50%; border: 0; background: #fff; color: var(--violeta); font: 700 22px 'Space Grotesk', sans-serif; cursor: pointer; }
 
@@ -136,8 +156,10 @@
   .arriba:hover { transform: translateY(-2px); }
   footer { text-align: center; color: var(--texto-3); font-size: 14px; padding: 30px 16px 50px; }
 
-  .aparece { opacity: 0; transform: translateY(16px); transition: opacity .5s ease, transform .5s ease; }
-  .aparece.visto { opacity: 1; transform: none; }
+  /* Antes el contenido empezaba invisible y aparecía al bajar: en algunos navegadores (y en el de WhatsApp)
+     nunca aparecía y la página se veía en blanco. Ahora siempre se ve; solo hay una entrada suave al cargar. */
+  .aparece { animation: entra-suave .45s ease both; }
+  @keyframes entra-suave { from { opacity: .001; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
   @media (max-width: 820px) {
     .paso { grid-template-columns: 1fr; padding: 20px; gap: 20px; }
@@ -169,7 +191,7 @@
   <section class="portada aparece">
     <span class="sello">Colombia y España · versión 2</span>
     <h1>Tu nuevo panel, <span>paso a paso</span></h1>
-    <p class="bajada">Aquí ves cómo entrar, registrarte en el turno, atender tus leads y reportar los que no sirven. Se lee en 5 minutos y funciona igual en el celular y en la computadora.</p>
+    <p class="bajada">Usa el botón <b>📱 Teléfono / 💻 Laptop</b> de abajo para ver las capturas como en tu equipo. Aquí ves cómo entrar, registrarte en el turno, atender tus leads y reportar los que no sirven. Se lee en 5 minutos y funciona igual en el celular y en la computadora.</p>
     <div class="datos">
       <span class="dato">AM <b>España</b> 6:30 a 17:00</span>
       <span class="dato">AM <b>Colombia</b> 9:00 a 17:00</span>
@@ -181,6 +203,10 @@
   </section>
 
   <nav class="indice" aria-label="Pasos de la guía">
+    <div class="disp" role="group" aria-label="Ver las capturas en">
+      <button type="button" data-disp="telefono" aria-pressed="true"><span aria-hidden="true">📱</span> Teléfono</button>
+      <button type="button" data-disp="laptop" aria-pressed="false"><span aria-hidden="true">💻</span> Laptop</button>
+    </div>
     <ol>
       <li><a href="#entrar"><span class="n">1</span>Entrar</a></li>
       <li><a href="#turno"><span class="n">2</span>Registrarte</a></li>
@@ -202,13 +228,16 @@
       <div class="cab"><span class="num" aria-hidden="true">1</span><h2 id="t1">Entra al panel</h2></div>
       <p class="resumen">Usa el mismo correo y contraseña del panel anterior. Si es tu primera vez, crea tu cuenta.</p>
       <ol class="pasos-lista">
-        <li>Abre el enlace del panel. Guárdalo en tu celular: en el navegador, menú <b>⋮</b> → <b>Agregar a pantalla de inicio</b>.</li>
+        <li>Abre el enlace del panel. <span class="solo-tel">Guárdalo en tu celular: en el navegador, menú <b>⋮</b> → <b>Agregar a pantalla de inicio</b>.</span><span class="solo-lap">Guárdalo en favoritos con <b>Ctrl+D</b> para tenerlo a mano.</span></li>
         <li>Escribe tu <b>correo</b> y tu <b>contraseña</b> y pulsa <span class="chip">Entrar</span>.</li>
         <li>¿Eres nuevo? Pulsa <span class="chip">Soy nuevo: crear cuenta</span> y escribe tu nombre y apellido <b>tal como aparece en la hoja de reparto</b>.</li>
       </ol>
       <div class="ojo"><b>Si eres nuevo</b>Al crear la cuenta todavía no puedes trabajar: tu líder tiene que asignarte la ruta (Colombia, España o las dos). Avísale cuando entres.</div>
     </div>
-    <figure><button type="button" class="boton-zoom" aria-label="Ver en grande: pantalla para entrar"><div class="telefono"><img src="guia/01-entrar.jpg" alt="Pantalla de entrada con el logo de Turisto, campos de correo y contraseña y el botón Entrar" loading="lazy" width="405" height="831"></div></button><figcaption>Pantalla de entrada</figcaption></figure>
+    <figure class="captura">
+      <div class="solo-tel"><button type="button" class="boton-zoom" aria-label="Ver en grande: pantalla para entrar (teléfono)"><div class="telefono"><img src="guia/01-entrar.jpg" alt="Pantalla de entrada con el logo de Turisto, campos de correo y contraseña y el botón Entrar" loading="lazy" width="405" height="831"></div></button><figcaption>Pantalla de entrada</figcaption></div>
+      <div class="solo-lap"><button type="button" class="boton-zoom" aria-label="Ver en grande: pantalla para entrar (laptop)"><div class="laptop"><div class="pantalla"><img src="guia/lap-01-entrar.jpg" alt="Pantalla de entrada del panel en una laptop" loading="lazy" width="1280" height="800"></div><div class="base" aria-hidden="true"></div></div></button><figcaption>Pantalla de entrada</figcaption></div>
+    </figure>
   </section>
 
   <!-- 2 -->
@@ -224,7 +253,10 @@
       <div class="regla"><b>Horarios (hora de Caracas)</b>Turno AM: España desde las 6:30 y Colombia desde las 9:00, las dos hasta las 17:00. Turno PM de 18:00 a 23:00. Entre las 17:00 y las 18:00 el registro está cerrado. Si tienes las dos rutas y te registras antes de las 9:00, quedas en España y vuelves a pulsar el botón a las 9:00 para Colombia.</div>
       <div class="tip"><b>Truco</b>El mismo botón está en el menú lateral, en la tarjeta de abajo.</div>
     </div>
-    <figure><button type="button" class="boton-zoom" aria-label="Ver en grande: aviso para registrarse en el turno"><div class="telefono"><img src="guia/02-aviso-turno.jpg" alt="Inicio del panel con el aviso No estás recibiendo leads y los botones Solo Colombia, Solo España y Las dos" loading="lazy" width="405" height="831"></div></button><figcaption>El aviso para registrarte</figcaption></figure>
+    <figure class="captura">
+      <div class="solo-tel"><button type="button" class="boton-zoom" aria-label="Ver en grande: aviso para registrarse en el turno (teléfono)"><div class="telefono"><img src="guia/02-aviso-turno.jpg" alt="Inicio del panel con el aviso No estás recibiendo leads y los botones Solo Colombia, Solo España y Las dos" loading="lazy" width="405" height="831"></div></button><figcaption>El aviso para registrarte</figcaption></div>
+      <div class="solo-lap"><button type="button" class="boton-zoom" aria-label="Ver en grande: aviso para registrarse en el turno (laptop)"><div class="laptop"><div class="pantalla"><img src="guia/lap-02-aviso-turno.jpg" alt="Inicio en la laptop con el aviso No estás recibiendo leads y los botones Solo Colombia, Solo España y Las dos" loading="lazy" width="1280" height="800"></div><div class="base" aria-hidden="true"></div></div></button><figcaption>El aviso para registrarte</figcaption></div>
+    </figure>
   </section>
 
   <!-- 3 -->
@@ -240,7 +272,10 @@
       </ol>
       <div class="ojo"><b>Si ves un aviso rojo</b>“No estás en la lista de reparto” quiere decir que el panel te tiene en el turno pero la hoja no. Pulsa <b>Volver a anotarme en la hoja</b>. Si sigue igual, avisa a tu líder.</div>
     </div>
-    <figure><button type="button" class="boton-zoom" aria-label="Ver en grande: tarjeta Tu turno"><div class="telefono"><img src="guia/03-tu-turno.jpg" alt="Tarjeta Tu turno PM con la hora, Estás en la lista de reparto, tu puesto en Colombia y España y los leads de hoy" loading="lazy" width="405" height="831"></div></button><figcaption>Tu turno, tu puesto y tu cupo</figcaption></figure>
+    <figure class="captura">
+      <div class="solo-tel"><button type="button" class="boton-zoom" aria-label="Ver en grande: tarjeta Tu turno (teléfono)"><div class="telefono"><img src="guia/03-tu-turno.jpg" alt="Tarjeta Tu turno PM con la hora, Estás en la lista de reparto, tu puesto en Colombia y España y los leads de hoy" loading="lazy" width="405" height="831"></div></button><figcaption>Tu turno, tu puesto y tu cupo</figcaption></div>
+      <div class="solo-lap"><button type="button" class="boton-zoom" aria-label="Ver en grande: tarjeta Tu turno (laptop)"><div class="laptop"><div class="pantalla"><img src="guia/lap-03-inicio-turno.jpg" alt="Inicio en la laptop con la tarjeta Tu turno a la derecha" loading="lazy" width="1280" height="800"></div><div class="base" aria-hidden="true"></div></div></button><figcaption>Tu turno, tu puesto y tu cupo</figcaption></div>
+    </figure>
   </section>
 
   <!-- 4 -->
@@ -252,12 +287,15 @@
         <li>Cada tarjeta muestra la ruta en grande (por ejemplo <b>BOG → MAD</b>), la hora, el cliente y los pasajeros.</li>
         <li>La franja de color del borde te dice cómo va: <span class="chip lima">amarilla</span> nuevo, <span class="chip rojo">roja</span> lleva 15 minutos o más sin contactar.</li>
         <li>Cuando te llega un lead nuevo suena un aviso y aparece arriba solo, sin recargar.</li>
-        <li>Toca la tarjeta para abrir el lead.</li>
+        <li><span class="solo-tel">Toca</span><span class="solo-lap">Haz clic en</span> la tarjeta para abrir el lead.</li>
       </ol>
       <div class="regla"><b>La meta</b>Contactar cada lead antes de 15 minutos. Ese tiempo se mide desde que te llega hasta que subes el comprobante del primer contacto.</div>
       <div class="ojo"><b>Regla de los 20 minutos</b>A los <b>15 minutos</b> sin la captura del primer contacto te llega un aviso por WhatsApp. A los <b>20 minutos</b> sin captura, el lead <b>pasa automáticamente a otro asesor</b> y desaparece de tu panel. Ese lead <b>sigue contando en tu cupo del día</b>, así que súbela siempre a tiempo.</div>
     </div>
-    <figure><button type="button" class="boton-zoom" aria-label="Ver en grande: lista Atiende ahora"><div class="telefono"><img src="guia/04-atiende-ahora.jpg" alt="Lista Atiende ahora con dos leads: Bogotá a Madrid sin contactar 25 minutos y Medellín a Barcelona nuevo" loading="lazy" width="405" height="831"></div></button><figcaption>Primero el más urgente</figcaption></figure>
+    <figure class="captura">
+      <div class="solo-tel"><button type="button" class="boton-zoom" aria-label="Ver en grande: lista Atiende ahora (teléfono)"><div class="telefono"><img src="guia/04-atiende-ahora.jpg" alt="Lista Atiende ahora con dos leads: Bogotá a Madrid sin contactar 25 minutos y Medellín a Barcelona nuevo" loading="lazy" width="405" height="831"></div></button><figcaption>Primero el más urgente</figcaption></div>
+      <div class="solo-lap"><button type="button" class="boton-zoom" aria-label="Ver en grande: lista Atiende ahora (laptop)"><div class="laptop"><div class="pantalla"><img src="guia/lap-03-inicio-turno.jpg" alt="Inicio en la laptop con la lista Atiende ahora a la izquierda" loading="lazy" width="1280" height="800"></div><div class="base" aria-hidden="true"></div></div></button><figcaption>Primero el más urgente</figcaption></div>
+    </figure>
   </section>
 
   <!-- 5 -->
@@ -280,7 +318,10 @@
       </div>
       <div class="tip"><b>Asistente</b>El botón amarillo con la estrella (<b>Pedir ayuda al asistente</b>) te guía si no sabes qué hacer con un lead: no contesta, ya compró, número malo…</div>
     </div>
-    <figure><button type="button" class="boton-zoom" aria-label="Ver en grande: un lead abierto"><div class="telefono"><img src="guia/05-lead.jpg" alt="Lead abierto de Bogotá a Madrid con el teléfono, los botones Abrir WhatsApp y Copiar número, los estados y los datos del viaje" loading="lazy" width="405" height="831"></div></button><figcaption>Un lead abierto</figcaption></figure>
+    <figure class="captura">
+      <div class="solo-tel"><button type="button" class="boton-zoom" aria-label="Ver en grande: un lead abierto (teléfono)"><div class="telefono"><img src="guia/05-lead.jpg" alt="Lead abierto de Bogotá a Madrid con el teléfono, los botones Abrir WhatsApp y Copiar número, los estados y los datos del viaje" loading="lazy" width="405" height="831"></div></button><figcaption>Un lead abierto</figcaption></div>
+      <div class="solo-lap"><button type="button" class="boton-zoom" aria-label="Ver en grande: un lead abierto (laptop)"><div class="laptop"><div class="pantalla"><img src="guia/lap-05-lead.jpg" alt="Lead abierto en la laptop: panel a la derecha con el teléfono, los estados con candado y los datos del viaje" loading="lazy" width="1280" height="800"></div><div class="base" aria-hidden="true"></div></div></button><figcaption>Un lead abierto</figcaption></div>
+    </figure>
   </section>
 
   <!-- 6 -->
@@ -297,7 +338,10 @@
       <div class="regla"><b>No lo dejes para después</b>Sube la captura apenas contactes al cliente: si pasan 20 minutos sin ella, el lead se reasigna a otro asesor.</div>
       <div class="ojo"><b>Importante</b>Si el lead no sirve (número que no existe, repetido…), repórtalo como erróneo <b>antes</b> de subir el comprobante. Un lead contactado ya no se puede reportar.</div>
     </div>
-    <figure><button type="button" class="boton-zoom" aria-label="Ver en grande: subir el comprobante de contacto"><div class="telefono"><img src="guia/06-comprobante.jpg" alt="Zona para subir la captura del primer contacto con el botón Elegir captura" loading="lazy" width="405" height="831"></div></button><figcaption>La captura del primer contacto</figcaption></figure>
+    <figure class="captura">
+      <div class="solo-tel"><button type="button" class="boton-zoom" aria-label="Ver en grande: subir el comprobante de contacto (teléfono)"><div class="telefono"><img src="guia/06-comprobante.jpg" alt="Zona para subir la captura del primer contacto con el botón Elegir captura" loading="lazy" width="405" height="831"></div></button><figcaption>La captura del primer contacto</figcaption></div>
+      <div class="solo-lap"><button type="button" class="boton-zoom" aria-label="Ver en grande: subir el comprobante de contacto (laptop)"><div class="laptop"><div class="pantalla"><img src="guia/lap-06-comprobante.jpg" alt="Zona para subir la captura del primer contacto en la laptop" loading="lazy" width="1280" height="800"></div><div class="base" aria-hidden="true"></div></div></button><figcaption>La captura del primer contacto</figcaption></div>
+    </figure>
   </section>
 
   <!-- 7 -->
@@ -334,7 +378,10 @@
       </div>
       <div class="regla"><b>Tu límite</b>Hay un máximo de reportes por día (normalmente 3). En la sección “Leads erróneos” ves cuántos te quedan y cómo va cada reporte.</div>
     </div>
-    <figure><button type="button" class="boton-zoom" aria-label="Ver en grande: reporte con la respuesta de la IA"><div class="telefono"><img src="guia/07-erroneo-ia.jpg" alt="Formulario de lead erróneo con la explicación del asesor, la captura y el recuadro verde La IA aprueba el reporte" loading="lazy" width="405" height="831"></div></button><figcaption>La IA aprobó el reporte</figcaption></figure>
+    <figure class="captura">
+      <div class="solo-tel"><button type="button" class="boton-zoom" aria-label="Ver en grande: reporte con la respuesta de la IA (teléfono)"><div class="telefono"><img src="guia/07-erroneo-ia.jpg" alt="Formulario de lead erróneo con la explicación del asesor, la captura y el recuadro verde La IA aprueba el reporte" loading="lazy" width="405" height="831"></div></button><figcaption>La IA aprobó el reporte</figcaption></div>
+      <div class="solo-lap"><button type="button" class="boton-zoom" aria-label="Ver en grande: reporte con la respuesta de la IA (laptop)"><div class="laptop"><div class="pantalla"><img src="guia/lap-07-erroneo-ia.jpg" alt="Formulario de lead erróneo en la laptop con el recuadro verde La IA aprueba el reporte" loading="lazy" width="1280" height="800"></div><div class="base" aria-hidden="true"></div></div></button><figcaption>La IA aprobó el reporte</figcaption></div>
+    </figure>
   </section>
 
   <!-- 8 -->
@@ -350,23 +397,29 @@
       </ol>
       <div class="tip"><b>Arriba</b>Con <b>Todas · Colombia · España</b> ves solo los leads de una ruta (si tienes las dos).</div>
     </div>
-    <figure><button type="button" class="boton-zoom" aria-label="Ver en grande: Mis leads"><div class="telefono"><img src="guia/08-mis-leads.jpg" alt="Sección Mis leads con el selector Últimos 7 días, los filtros por estado y la vista de lista" loading="lazy" width="405" height="831"></div></button><figcaption>Tu historial con filtros</figcaption></figure>
+    <figure class="captura">
+      <div class="solo-tel"><button type="button" class="boton-zoom" aria-label="Ver en grande: Mis leads (teléfono)"><div class="telefono"><img src="guia/08-mis-leads.jpg" alt="Sección Mis leads con el selector Últimos 7 días, los filtros por estado y la vista de lista" loading="lazy" width="405" height="831"></div></button><figcaption>Tu historial con filtros</figcaption></div>
+      <div class="solo-lap"><button type="button" class="boton-zoom" aria-label="Ver en grande: Mis leads (laptop)"><div class="laptop"><div class="pantalla"><img src="guia/lap-08-mis-leads.jpg" alt="Mis leads en la laptop con el periodo, los filtros y la lista" loading="lazy" width="1280" height="800"></div><div class="base" aria-hidden="true"></div></div></button><figcaption>Tu historial con filtros</figcaption></div>
+    </figure>
   </section>
 
   <!-- 9 -->
   <section class="paso aparece" id="menu" aria-labelledby="t9">
     <div>
       <div class="cab"><span class="num" aria-hidden="true">9</span><h2 id="t9">El menú</h2></div>
-      <p class="resumen">En el celular tienes una barra abajo; en la computadora, el menú a la izquierda.</p>
+      <p class="resumen"><span class="solo-tel">En el celular tienes una barra abajo y el botón <b>Más</b> abre el menú completo.</span><span class="solo-lap">En la laptop el menú está siempre a la izquierda, con la tarjeta de tu turno abajo.</span></p>
       <ol class="pasos-lista">
         <li><b>Inicio</b>: tu turno, lo urgente y tu cupo de erróneos.</li>
         <li><b>Leads</b>: todos tus leads y el historial.</li>
         <li><b>Erróneos</b>: tus reportes de hoy y cuántos te quedan.</li>
-        <li><b>Más</b>: abre el menú completo y la tarjeta de tu turno.</li>
+        <li class="solo-tel"><b>Más</b>: abre el menú completo y la tarjeta de tu turno.</li>
         <li>Para salir, usa el botón con la flecha arriba a la derecha, junto a tus iniciales.</li>
       </ol>
     </div>
-    <figure><button type="button" class="boton-zoom" aria-label="Ver en grande: menú lateral"><div class="telefono"><img src="guia/10-menu.jpg" alt="Menú lateral con Inicio, Mis leads y Leads erróneos, y abajo la tarjeta Recibiendo leads" loading="lazy" width="405" height="831"></div></button><figcaption>El menú lateral</figcaption></figure>
+    <figure class="captura">
+      <div class="solo-tel"><button type="button" class="boton-zoom" aria-label="Ver en grande: menú lateral (teléfono)"><div class="telefono"><img src="guia/10-menu.jpg" alt="Menú lateral con Inicio, Mis leads y Leads erróneos, y abajo la tarjeta Recibiendo leads" loading="lazy" width="405" height="831"></div></button><figcaption>El menú lateral</figcaption></div>
+      <div class="solo-lap"><button type="button" class="boton-zoom" aria-label="Ver en grande: menú lateral (laptop)"><div class="laptop"><div class="pantalla"><img src="guia/lap-08-mis-leads.jpg" alt="Menú a la izquierda en la laptop con Inicio, Mis leads y Leads erróneos" loading="lazy" width="1280" height="800"></div><div class="base" aria-hidden="true"></div></div></button><figcaption>El menú lateral</figcaption></div>
+    </figure>
   </section>
 
   <h2 class="titulo-seccion" id="preguntas">Preguntas frecuentes</h2>
@@ -424,24 +477,54 @@
   addEventListener('scroll', alDesplazar, { passive: true }); alDesplazar();
   arriba.addEventListener('click', () => scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }));
 
-  // Aparecer al entrar en pantalla y marcar el paso actual en el índice
-  const enlaces = Array.from(document.querySelectorAll('.indice a'));
-  if ('IntersectionObserver' in window) {
-    const io = new IntersectionObserver((es) => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visto'); io.unobserve(e.target); } }), { rootMargin: '0px 0px -10% 0px' });
-    document.querySelectorAll('.aparece').forEach(el => io.observe(el));
-    const secciones = enlaces.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
-    const io2 = new IntersectionObserver((es) => {
-      es.forEach(e => {
-        if (!e.isIntersecting) return;
-        enlaces.forEach(a => a.setAttribute('aria-current', String(a.getAttribute('href') === '#' + e.target.id)));
-        const activo = enlaces.find(a => a.getAttribute('aria-current') === 'true');
-        if (activo) activo.scrollIntoView({ block: 'nearest', inline: 'center' });
-      });
-    }, { rootMargin: '-45% 0px -50% 0px' });
-    secciones.forEach(s => io2.observe(s));
-  } else {
-    document.querySelectorAll('.aparece').forEach(el => el.classList.add('visto'));
+  // Teléfono / Laptop: se recuerda la elección; la primera vez se elige según el ancho de la pantalla.
+  const raiz = document.documentElement;
+  function ponerDisp(d) {
+    raiz.setAttribute('data-disp', d);
+    document.querySelectorAll('.disp button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.disp === d)));
+    try { localStorage.setItem('turisto-guia-disp', d); } catch (e) {}
   }
+  let guardado = null; try { guardado = localStorage.getItem('turisto-guia-disp'); } catch (e) {}
+  ponerDisp(guardado === 'laptop' || guardado === 'telefono' ? guardado : (innerWidth >= 900 ? 'laptop' : 'telefono'));
+  document.querySelectorAll('.disp button').forEach(b => b.addEventListener('click', () => {
+    // Que la página no salte: se mantiene a la vista el mismo paso al cambiar el tamaño de las capturas.
+    const actual = pasoActual(); ponerDisp(b.dataset.disp);
+    if (actual) scrollTo({ top: actual.offsetTop - margenSuperior(), behavior: 'auto' });
+  }));
+
+  // Índice: lleva al paso aunque el navegador no haga el desplazamiento solo, y marca el paso en pantalla.
+  const enlaces = Array.from(document.querySelectorAll('.indice a'));
+  const secciones = enlaces.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  const listaIndice = document.querySelector('.indice ol');
+  const suave = () => matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+  function margenSuperior() { const i = document.querySelector('.indice'); return (i ? i.getBoundingClientRect().height : 0) + 96; }
+  enlaces.forEach(a => a.addEventListener('click', (e) => {
+    const destino = document.querySelector(a.getAttribute('href')); if (!destino) return;
+    e.preventDefault();
+    scrollTo({ top: destino.getBoundingClientRect().top + scrollY - margenSuperior() + 8, behavior: suave() });
+    try { history.replaceState(null, '', a.getAttribute('href')); } catch (er) {}
+  }));
+  function pasoActual() {
+    const linea = margenSuperior() + 20;
+    let actual = secciones[0];
+    secciones.forEach(s => { if (s.getBoundingClientRect().top <= linea) actual = s; });
+    return actual;
+  }
+  let pendiente = false, ultimo = null;
+  function marcarActivo() {
+    pendiente = false;
+    const s = pasoActual(); if (!s || s === ultimo) return; ultimo = s;
+    enlaces.forEach(a => a.setAttribute('aria-current', String(a.getAttribute('href') === '#' + s.id)));
+    const activo = enlaces.find(a => a.getAttribute('aria-current') === 'true');
+    // Solo se mueve la fila del índice (de lado); la página no se toca.
+    if (activo && listaIndice) {
+      const li = activo.getBoundingClientRect(), ol = listaIndice.getBoundingClientRect();
+      listaIndice.scrollTo({ left: listaIndice.scrollLeft + (li.left - ol.left) - (ol.width - li.width) / 2, behavior: 'auto' });
+    }
+  }
+  addEventListener('scroll', () => { if (!pendiente) { pendiente = true; requestAnimationFrame(marcarActivo); } }, { passive: true });
+  addEventListener('resize', () => { ultimo = null; marcarActivo(); });
+  marcarActivo();
 
   // Ver la captura en grande
   const visor = document.getElementById('visor'), visorImg = document.getElementById('visorImg'), cerrar = document.getElementById('visorCerrar');
@@ -449,9 +532,10 @@
   document.querySelectorAll('.boton-zoom').forEach(b => b.addEventListener('click', () => {
     origen = b; const img = b.querySelector('img');
     visorImg.src = img ? img.currentSrc || img.src : ''; visorImg.alt = img ? img.alt : '';
-    visor.classList.add('abierto'); cerrar.focus();
+    visor.classList.toggle('ancho', !!b.querySelector('.laptop'));
+    visor.classList.add('abierto'); raiz.style.overflow = 'hidden'; cerrar.focus();
   }));
-  function cerrarVisor() { visor.classList.remove('abierto'); if (origen) origen.focus(); }
+  function cerrarVisor() { visor.classList.remove('abierto'); raiz.style.overflow = ''; if (origen) origen.focus({ preventScroll: true }); }
   cerrar.addEventListener('click', cerrarVisor);
   visor.addEventListener('click', (e) => { if (e.target === visor) cerrarVisor(); });
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && visor.classList.contains('abierto')) cerrarVisor(); });
